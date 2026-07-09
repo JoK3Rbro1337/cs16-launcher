@@ -104,3 +104,21 @@ button.primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.detect-result {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.detect-result dt {
+  color: var(--muted);
+}
+
+.detect-result dd {
+  margin: 0;
+  font-family: monospace;
+  word-break: break-all;
+}
