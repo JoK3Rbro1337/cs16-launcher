@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Read(//home/jok3r/**)",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('esbuild'\\).versionSync ? 0:0\")",
+      "Bash(node_modules/.bin/esbuild --version)",
+      "Bash(npm run *)",
+      "Bash(node node_modules/electron/install.js)"
+    ]
+  }
+}

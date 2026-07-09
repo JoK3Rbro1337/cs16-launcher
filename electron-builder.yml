@@ -1,0 +1,28 @@
+appId: com.cs16launcher.app
+productName: CS 1.6 Launcher
+directories:
+  buildResources: build
+  output: dist
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron/*'
+  - '!{.eslintrc.*,.prettierrc.*,tsconfig*.json,electron.vite.config.ts}'
+  - '!{README.md,cs16-launcher-architecture.md,.gitignore}'
+asarUnpack:
+  - resources/**
+# electron-updater provider. M5: point to the real GitHub repo before publishing.
+publish:
+  provider: github
+  owner: CHANGE_ME
+  repo: cs16-launcher
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+  category: Game
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
