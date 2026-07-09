@@ -11,10 +11,9 @@ files:
   - '!{README.md,cs16-launcher-architecture.md,.gitignore}'
 asarUnpack:
   - resources/**
-# electron-updater provider. M5: point to the real GitHub repo before publishing.
 publish:
   provider: github
-  owner: CHANGE_ME
+  owner: JoK3Rbro1337
   repo: cs16-launcher
 win:
   target:
