@@ -122,3 +122,9 @@ button.primary:disabled {
   font-family: monospace;
   word-break: break-all;
 }
+
+.error {
+  margin-top: 12px;
+  color: #e5484d;
+  font-size: 14px;
+}
