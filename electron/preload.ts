@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
 import type { FavoriteServer, GameServer } from './modules/server-browser'
 import type { SyncProgress, SyncResult } from './modules/content-sync'
+import type { UpdateStatus } from './modules/updater'
 
 /**
  * Renderer-facing API. The renderer has no Node/Electron access — every
@@ -21,6 +22,16 @@ const launcher = {
       callback(progress)
     ipcRenderer.on('content:progress', listener)
     return () => ipcRenderer.removeListener('content:progress', listener)
+  },
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  checkForUpdates: (): Promise<void> => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('updater:download'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('updater:install'),
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus): void =>
+      callback(status)
+    ipcRenderer.on('updater:status', listener)
+    return () => ipcRenderer.removeListener('updater:status', listener)
   }
 }
 

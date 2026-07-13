@@ -5,6 +5,7 @@ import { detectSteam } from './modules/steam-detect'
 import { playGame, connectToServer } from './modules/launch'
 import { queryServers, type FavoriteServer } from './modules/server-browser'
 import { syncContent } from './modules/content-sync'
+import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -22,7 +23,12 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show()
+    // Best-effort: failures surface to the renderer via the 'error' status
+    // event already wired in initUpdater, nothing more to do with it here.
+    checkForUpdates().catch(() => {})
+  })
 
   // Open external links (e.g. steam:// or http) in the OS, never in-app.
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -45,6 +51,10 @@ function registerIpc(): void {
   ipcMain.handle('content:sync', (event, manifestUrl: string) =>
     syncContent(manifestUrl, (progress) => event.sender.send('content:progress', progress))
   )
+  ipcMain.handle('updater:check', () => checkForUpdates())
+  ipcMain.handle('updater:download', () => downloadUpdate())
+  ipcMain.handle('updater:install', () => installUpdate())
+  ipcMain.handle('app:version', () => app.getVersion())
 }
 
 app.whenReady().then(() => {
@@ -52,6 +62,12 @@ app.whenReady().then(() => {
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  initUpdater((status) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('updater:status', status)
+    }
   })
 
   registerIpc()

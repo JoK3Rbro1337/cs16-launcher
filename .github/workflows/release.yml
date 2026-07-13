@@ -1,0 +1,45 @@
+name: Release
+
+# Builds the launcher for Windows and Linux and publishes a GitHub Release
+# when a version tag is pushed. Windows is built natively on windows-latest
+# instead of cross-compiled with Wine locally — Wine's NSIS/signtool path
+# needs mono and prompts an interactive installer dialog, which has no place
+# in a non-interactive build.
+#
+# electron-builder's GitHub publisher derives the release tag from
+# package.json's "version" field (v-prefixed), not from the tag that
+# triggered this workflow — bump the version, commit, then push a matching
+# vX.Y.Z tag so the two agree.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            build-flag: --linux
+          - os: windows-latest
+            build-flag: --win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npx electron-builder ${{ matrix.build-flag }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
