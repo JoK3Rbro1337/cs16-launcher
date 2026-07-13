@@ -5,3 +5,6 @@ dist/
 .DS_Store
 .vite/
 .claude/settings.local.json
+content/
+.content-stage/
+manifest.json
