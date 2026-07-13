@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { SyncProgress, SyncResult } from '../../electron/modules/content-sync'
+import type { BuildProfile, SyncProgress, SyncResult } from '../../electron/modules/content-sync'
 import type { UpdateStatus } from '../../electron/modules/updater'
-
-const MANIFEST_URL_KEY = 'cs16-manifest-url'
+import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, loadJSON } from '../lib/storage'
 
 type SyncState = 'idle' | 'syncing' | 'done' | 'error'
 
@@ -44,7 +43,8 @@ export default function Settings(): React.JSX.Element {
     setResult(null)
     setProgress(null)
     try {
-      const syncResult = await window.launcher.syncContent(manifestUrl)
+      const profile = loadJSON<BuildProfile>(BUILD_PROFILE_KEY, { selections: {}, features: {} })
+      const syncResult = await window.launcher.syncContent(manifestUrl, profile)
       setResult(syncResult)
       setState('done')
     } catch (err) {
@@ -113,7 +113,7 @@ export default function Settings(): React.JSX.Element {
       {state === 'done' && result && (
         <p className="muted">
           Synced content v{result.version}: {result.updatedFiles} updated, {result.skippedFiles}{' '}
-          already up to date.
+          already up to date, {result.removedFiles} removed.
         </p>
       )}
 

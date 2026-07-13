@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
+import type { BuildProfile, ContentManifest, SyncProgress } from '../../electron/modules/content-sync'
+import {
+  BUILD_PROFILE_KEY,
+  MANIFEST_URL_KEY,
+  SECTION_COLLAPSE_KEY,
+  SYNCED_PROFILE_KEY,
+  loadJSON,
+  saveJSON
+} from '../lib/storage'
 
 interface SkinItem {
   id: string
@@ -17,16 +26,9 @@ interface Feature {
   label: string
 }
 
-interface BuildProfile {
-  /** categoryId -> selected itemId */
-  selections: Record<string, string>
-  /** featureId -> enabled */
-  features: Record<string, boolean>
-}
-
-// Placeholder content — categories/items/thumbnails here are mocked until a
-// real content pack is wired in (see the note in the page below).
-const CATEGORIES: SkinCategory[] = [
+// Placeholder content, used until a manifest URL is configured in Settings
+// (or if fetching it fails) — see the note rendered below the grid.
+const PLACEHOLDER_CATEGORIES: SkinCategory[] = [
   {
     id: 'standard',
     label: 'Standard',
@@ -74,40 +76,52 @@ const CATEGORIES: SkinCategory[] = [
   }
 ]
 
-const FEATURES: Feature[] = [
+const PLACEHOLDER_FEATURES: Feature[] = [
   { id: 'csgo-hud', label: 'CS:GO HUD' },
   { id: 'ru-voiceover', label: 'Russian voiceover' },
   { id: 'csgo-awp-crosshair', label: 'CS:GO AWP crosshair' }
 ]
 
-const PROFILE_KEY = 'cs16-build-profile'
-const COLLAPSE_KEY = 'cs16-section-collapsed'
-
-function loadJSON<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
+function emptyProfile(): BuildProfile {
+  return { selections: {}, features: {} }
 }
 
-function saveJSON(key: string, value: unknown): void {
-  localStorage.setItem(key, JSON.stringify(value))
-}
-
-function defaultProfile(): BuildProfile {
-  const selections: Record<string, string> = {}
-  for (const category of CATEGORIES) selections[category.id] = category.items[0].id
-  const features: Record<string, boolean> = {}
-  for (const feature of FEATURES) features[feature.id] = false
-  return { selections, features }
-}
-
-function defaultCollapsed(): Record<string, boolean> {
+function defaultCollapsed(categories: SkinCategory[]): Record<string, boolean> {
   const state: Record<string, boolean> = { system: true }
-  for (const category of CATEGORIES) state[category.id] = false
+  for (const category of categories) state[category.id] = false
   return state
+}
+
+/**
+ * Fills in a selection for any slot that doesn't have one yet (or whose
+ * stored selection no longer exists) and a false default for any new
+ * feature — without touching selections/toggles the user already made, so
+ * a manifest re-fetch never silently resets an existing choice.
+ */
+function reconcileProfile(profile: BuildProfile, categories: SkinCategory[], features: Feature[]): BuildProfile {
+  const selections = { ...profile.selections }
+  for (const category of categories) {
+    const current = selections[category.id]
+    const stillValid = category.items.some((item) => item.id === current)
+    if (!stillValid && category.items.length > 0) selections[category.id] = category.items[0].id
+  }
+  const featureState = { ...profile.features }
+  for (const feature of features) {
+    if (!(feature.id in featureState)) featureState[feature.id] = false
+  }
+  return { selections, features: featureState }
+}
+
+function manifestToCategories(manifest: ContentManifest): SkinCategory[] {
+  return manifest.slots.map((slot) => ({
+    id: slot.id,
+    label: slot.label,
+    items: slot.variants.map((variant) => ({ id: variant.id, name: variant.label }))
+  }))
+}
+
+function manifestToFeatures(manifest: ContentManifest): Feature[] {
+  return manifest.features.map((feature) => ({ id: feature.id, label: feature.label }))
 }
 
 function CollapsibleSection({
@@ -135,10 +149,24 @@ function CollapsibleSection({
 export default function Home(): React.JSX.Element {
   const [detection, setDetection] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
   const [launchError, setLaunchError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<BuildProfile>(() => loadJSON(PROFILE_KEY, defaultProfile()))
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
-    loadJSON(COLLAPSE_KEY, defaultCollapsed())
+  const [profile, setProfile] = useState<BuildProfile>(() => loadJSON(BUILD_PROFILE_KEY, emptyProfile()))
+  const [syncedProfileJSON, setSyncedProfileJSON] = useState<string | null>(() =>
+    localStorage.getItem(SYNCED_PROFILE_KEY)
   )
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
+    loadJSON(SECTION_COLLAPSE_KEY, defaultCollapsed(PLACEHOLDER_CATEGORIES))
+  )
+
+  const [manifestUrl] = useState(() => localStorage.getItem(MANIFEST_URL_KEY) ?? '')
+  const [manifest, setManifest] = useState<ContentManifest | null>(null)
+  const [manifestError, setManifestError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null)
+
+  const usingManifest = manifestUrl !== '' && manifest !== null
+  const categories = usingManifest ? manifestToCategories(manifest) : PLACEHOLDER_CATEGORIES
+  const features = usingManifest ? manifestToFeatures(manifest) : PLACEHOLDER_FEATURES
+  const dirty = manifestUrl !== '' && JSON.stringify(profile) !== syncedProfileJSON
 
   useEffect(() => {
     window.launcher
@@ -147,13 +175,55 @@ export default function Home(): React.JSX.Element {
       .catch(() => setDetection('error'))
   }, [])
 
+  useEffect(() => {
+    if (!manifestUrl) return
+    window.launcher
+      .fetchManifest(manifestUrl)
+      .then((m) => {
+        setManifest(m)
+        setManifestError(null)
+      })
+      .catch((err) => {
+        setManifest(null)
+        setManifestError(err instanceof Error ? err.message : String(err))
+      })
+  }, [manifestUrl])
+
+  useEffect(() => {
+    return window.launcher.onSyncProgress(setSyncProgress)
+  }, [])
+
+  // Fill in defaults for slots/features that don't have a stored choice yet
+  // (new manifest, or first run) without clobbering existing selections.
+  useEffect(() => {
+    setProfile((prev) => {
+      const next = reconcileProfile(prev, categories, features)
+      if (JSON.stringify(next) !== JSON.stringify(prev)) saveJSON(BUILD_PROFILE_KEY, next)
+      return next
+    })
+  }, [categories.length, features.length, usingManifest])
+
   const installed = detection !== 'loading' && detection !== 'error' && detection.installed
+
+  function markSynced(synced: BuildProfile): void {
+    const json = JSON.stringify(synced)
+    localStorage.setItem(SYNCED_PROFILE_KEY, json)
+    setSyncedProfileJSON(json)
+  }
 
   async function handlePlay(): Promise<void> {
     setLaunchError(null)
     try {
+      if (manifestUrl && dirty) {
+        setSyncing(true)
+        setSyncProgress(null)
+        await window.launcher.syncContent(manifestUrl, profile)
+        markSynced(profile)
+        setSyncing(false)
+      }
       await window.launcher.play()
     } catch (err) {
+      setSyncing(false)
       setLaunchError(err instanceof Error ? err.message : String(err))
     }
   }
@@ -161,7 +231,7 @@ export default function Home(): React.JSX.Element {
   function selectItem(categoryId: string, itemId: string): void {
     setProfile((prev) => {
       const next = { ...prev, selections: { ...prev.selections, [categoryId]: itemId } }
-      saveJSON(PROFILE_KEY, next)
+      saveJSON(BUILD_PROFILE_KEY, next)
       return next
     })
   }
@@ -172,7 +242,7 @@ export default function Home(): React.JSX.Element {
         ...prev,
         features: { ...prev.features, [featureId]: !prev.features[featureId] }
       }
-      saveJSON(PROFILE_KEY, next)
+      saveJSON(BUILD_PROFILE_KEY, next)
       return next
     })
   }
@@ -180,17 +250,30 @@ export default function Home(): React.JSX.Element {
   function toggleSection(sectionId: string): void {
     setCollapsed((prev) => {
       const next = { ...prev, [sectionId]: !prev[sectionId] }
-      saveJSON(COLLAPSE_KEY, next)
+      saveJSON(SECTION_COLLAPSE_KEY, next)
       return next
     })
   }
+
+  const pct =
+    syncProgress && syncProgress.totalBytes > 0
+      ? Math.round((syncProgress.downloadedBytes / syncProgress.totalBytes) * 100)
+      : syncProgress
+        ? 100
+        : 0
 
   return (
     <section className="page build-page">
       <h1>Build</h1>
 
+      {manifestUrl && manifestError && (
+        <p className="muted note">
+          Couldn't load the content pack ({manifestError}) — showing placeholder content.
+        </p>
+      )}
+
       <div className="category-list">
-        {CATEGORIES.map((category) => (
+        {categories.map((category) => (
           <CollapsibleSection
             key={category.id}
             title={category.label}
@@ -199,7 +282,7 @@ export default function Home(): React.JSX.Element {
           >
             <div className="item-grid">
               {category.items.map((item) => {
-                const selected = (profile.selections[category.id] ?? category.items[0].id) === item.id
+                const selected = profile.selections[category.id] === item.id
                 return (
                   <button
                     key={item.id}
@@ -216,11 +299,13 @@ export default function Home(): React.JSX.Element {
         ))}
       </div>
 
-      <p className="muted note">Content selection will apply after content-pack integration.</p>
+      {!usingManifest && (
+        <p className="muted note">Content selection will apply after content-pack integration.</p>
+      )}
 
       <h2>Features</h2>
       <div className="feature-pills">
-        {FEATURES.map((feature) => (
+        {features.map((feature) => (
           <button
             key={feature.id}
             className={`pill${profile.features[feature.id] ? ' active' : ''}`}
@@ -252,8 +337,21 @@ export default function Home(): React.JSX.Element {
 
       <div className="play-dock">
         {launchError && <p className="error">{launchError}</p>}
-        <button className="play-button" disabled={!installed} onClick={handlePlay}>
-          PLAY
+        {syncing && (
+          <div className="sync-progress dock-progress">
+            <div className="progress-bar">
+              <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="muted">
+              {syncProgress
+                ? `Syncing ${syncProgress.completedFiles}/${syncProgress.totalFiles} — ${pct}%`
+                : 'Checking content…'}
+            </p>
+          </div>
+        )}
+        {!syncing && dirty && <p className="muted">Changes will sync when you press Play.</p>}
+        <button className="play-button" disabled={!installed || syncing} onClick={handlePlay}>
+          {syncing ? 'SYNCING…' : 'PLAY'}
         </button>
       </div>
     </section>

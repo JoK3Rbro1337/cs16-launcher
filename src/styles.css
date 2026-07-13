@@ -414,6 +414,17 @@ button.star {
   max-width: 320px;
 }
 
+.play-dock .dock-progress {
+  margin: 0;
+  width: 240px;
+}
+
+.play-dock p.muted {
+  margin: 0;
+  font-size: 12px;
+  text-align: right;
+}
+
 .play-button {
   padding: 18px 48px;
   border: none;

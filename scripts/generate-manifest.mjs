@@ -1,23 +1,43 @@
 #!/usr/bin/env node
 /**
- * generate-manifest — build a content-sync manifest.json from a local content
- * folder, for publishing a custom content pack as GitHub Release assets.
+ * generate-manifest — build a schemaVersion-2 content-sync manifest.json
+ * from a local content folder, for publishing a custom content pack as
+ * GitHub Release assets.
  *
- * GitHub Release assets are flat (no "/" in the filename), so this script
- * derives a flat, collision-safe asset name per file and can optionally stage
- * copies under those names for `gh release upload`. Each manifest entry's
- * `path` is relative to the game install root (see cs16-launcher-architecture.md
- * section 4), e.g. "cstrike/sound/weapons/deagle-1.wav" — by default that
- * prefix comes from the content folder's own name, so pointing --content at a
- * local `cstrike/` directory produces paths matching the game layout directly.
+ * Folder convention (point --content at the directory containing these):
+ *   base/                    always-synced base pack
+ *   slots/<slot>/<variant>/  one folder per selectable variant of a slot
+ *   features/<feature>/      one folder per optional toggle
+ * Every one of those leaf folders is walked exactly like the old flat
+ * layout: files inside it map straight to their in-game relative path, so
+ * a file at base/cstrike/sound/x.wav or slots/weapons/b1/cstrike/sound/x.wav
+ * both produce the manifest path "cstrike/sound/x.wav" (deliberately, for
+ * variants — that's what lets content-sync swap one variant's copy of a
+ * path for another's). An optional meta.json ({"label": "..."}) in a slot/
+ * variant/feature folder overrides its display label; otherwise the label
+ * is derived from the folder name.
+ *
+ * If none of base/, slots/, features/ exist under --content, falls back to
+ * the old flat/legacy mode: --content is treated as a single base pack
+ * (same as content-sync schemaVersion 1), with --prefix behaving as before.
+ *
+ * GitHub Release assets are flat (no "/" in the filename). Since the same
+ * manifest `path` deliberately repeats across a slot's variants, the asset
+ * name is derived from the file's location on disk (unique by construction)
+ * rather than from its manifest path, and can optionally be staged under
+ * those names for `gh release upload`.
  *
  * Usage:
  *   node scripts/generate-manifest.mjs \
- *     --content ./content-pack/cstrike \
+ *     --content ./content \
  *     --version 1.4.2 \
  *     --repo myuser/cs16-content \
  *     --tag v1.4.2 \
- *     [--out manifest.json] [--prefix cstrike] [--stage ./release-assets]
+ *     [--out manifest.json] [--stage ./release-assets]
+ *
+ *   # legacy flat mode (no base/slots/features under --content):
+ *   node scripts/generate-manifest.mjs --content ./content-pack/cstrike \
+ *     --version 1.4.2 --repo myuser/cs16-content --tag v1.4.2 [--prefix cstrike]
  *
  * Then publish with:
  *   gh release create v1.4.2 ./release-assets/* manifest.json
@@ -25,7 +45,7 @@
 
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { copyFile, mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 
 function parseArgs(argv) {
@@ -48,11 +68,22 @@ function usageError(message) {
   process.exit(1)
 }
 
+async function isDir(path) {
+  const s = await stat(path).catch(() => null)
+  return s?.isDirectory() ?? false
+}
+
+async function listDirs(dir) {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+  return entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name)
+}
+
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true })
   const files = []
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue
+    if (entry.name === 'meta.json') continue
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
       files.push(...(await walk(full)))
@@ -71,9 +102,51 @@ async function hashFile(path) {
   return hash.digest('hex')
 }
 
-/** Flatten a manifest path into a safe, unique GitHub release asset filename. */
-function toAssetName(manifestPath) {
-  return manifestPath.replace(/\//g, '__').replace(/[^A-Za-z0-9._-]/g, '-')
+/** Flatten a path into a safe, unique GitHub release asset filename. */
+function toAssetName(rawPath) {
+  return rawPath.replace(/\//g, '__').replace(/[^A-Za-z0-9._-]/g, '-')
+}
+
+function humanize(id) {
+  return id.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+async function readLabel(dir, fallbackId) {
+  try {
+    const text = await readFile(join(dir, 'meta.json'), 'utf-8')
+    const meta = JSON.parse(text)
+    if (typeof meta.label === 'string' && meta.label) return meta.label
+  } catch {
+    // no meta.json, or it's malformed — fall back to a humanized id
+  }
+  return humanize(fallbackId)
+}
+
+/**
+ * Walks `sourceDir` and emits manifest file entries. `manifestPrefix` is
+ * prepended to each file's in-game path (used only by legacy flat mode);
+ * `assetNamespace` uniquely identifies where this file came from on disk,
+ * so the same in-game path from two different variants gets two different
+ * (and correctly distinct) release asset names.
+ */
+async function collectFiles(sourceDir, manifestPrefix, assetNamespace, baseUrl, stageDir) {
+  const filePaths = await walk(sourceDir)
+  const files = []
+  for (const filePath of filePaths) {
+    const relPath = relative(sourceDir, filePath).split(sep).join('/')
+    const manifestPath = manifestPrefix ? `${manifestPrefix}/${relPath}` : relPath
+    const assetName = toAssetName(`${assetNamespace}/${relPath}`)
+    const [sha256, { size }] = await Promise.all([hashFile(filePath), stat(filePath)])
+
+    files.push({ path: manifestPath, sha256, size, url: `${baseUrl}/${assetName}` })
+
+    if (stageDir) {
+      await mkdir(stageDir, { recursive: true })
+      await copyFile(filePath, join(stageDir, assetName))
+    }
+  }
+  files.sort((a, b) => a.path.localeCompare(b.path))
+  return files
 }
 
 async function main() {
@@ -85,41 +158,77 @@ async function main() {
   if (!tag) usageError('--tag <tag> is required')
   if (!/^[^/]+\/[^/]+$/.test(repo)) usageError('--repo must look like <owner>/<repo>')
 
-  const contentDir = content
-  const contentStat = await stat(contentDir).catch(() => null)
-  if (!contentStat?.isDirectory()) usageError(`--content "${contentDir}" is not a directory`)
+  const contentRoot = content
+  if (!(await isDir(contentRoot))) usageError(`--content "${contentRoot}" is not a directory`)
 
-  const prefix = args.prefix ?? basename(contentDir)
   const outPath = args.out ?? 'manifest.json'
   const stageDir = args.stage ?? null
-
-  const filePaths = await walk(contentDir)
-  if (filePaths.length === 0) usageError(`no files found under "${contentDir}"`)
-
   const baseUrl = `https://github.com/${repo}/releases/download/${tag}`
 
-  const files = []
-  for (const filePath of filePaths) {
-    const relPath = relative(contentDir, filePath).split(sep).join('/')
-    const manifestPath = prefix ? `${prefix}/${relPath}` : relPath
-    const [sha256, { size }] = await Promise.all([hashFile(filePath), stat(filePath)])
-    const assetName = toAssetName(manifestPath)
+  const baseDir = join(contentRoot, 'base')
+  const slotsDir = join(contentRoot, 'slots')
+  const featuresDir = join(contentRoot, 'features')
+  const isV2Layout = (await isDir(baseDir)) || (await isDir(slotsDir)) || (await isDir(featuresDir))
 
-    files.push({ path: manifestPath, sha256, size, url: `${baseUrl}/${assetName}` })
+  let files = []
+  let slots = []
+  let features = []
 
-    if (stageDir) {
-      await mkdir(stageDir, { recursive: true })
-      await copyFile(filePath, join(stageDir, assetName))
+  if (isV2Layout) {
+    if (await isDir(baseDir)) {
+      files = await collectFiles(baseDir, '', 'base', baseUrl, stageDir)
     }
+
+    for (const slotId of (await listDirs(slotsDir)).sort()) {
+      const slotDir = join(slotsDir, slotId)
+      const slotLabel = await readLabel(slotDir, slotId)
+      const variants = []
+      for (const variantId of (await listDirs(slotDir)).sort()) {
+        const variantDir = join(slotDir, variantId)
+        const variantLabel = await readLabel(variantDir, variantId)
+        const variantFiles = await collectFiles(
+          variantDir,
+          '',
+          `slots/${slotId}/${variantId}`,
+          baseUrl,
+          stageDir
+        )
+        variants.push({ id: variantId, label: variantLabel, files: variantFiles })
+      }
+      slots.push({ id: slotId, label: slotLabel, variants })
+    }
+
+    for (const featureId of (await listDirs(featuresDir)).sort()) {
+      const featureDir = join(featuresDir, featureId)
+      const featureLabel = await readLabel(featureDir, featureId)
+      const featureFiles = await collectFiles(featureDir, '', `features/${featureId}`, baseUrl, stageDir)
+      features.push({ id: featureId, label: featureLabel, files: featureFiles })
+    }
+
+    if (files.length === 0 && slots.length === 0 && features.length === 0) {
+      usageError(`no content found under "${contentRoot}" (expected base/, slots/, or features/)`)
+    }
+  } else {
+    const prefix = args.prefix ?? basename(contentRoot)
+    files = await collectFiles(contentRoot, prefix, 'base', baseUrl, stageDir)
+    if (files.length === 0) usageError(`no files found under "${contentRoot}"`)
   }
 
-  files.sort((a, b) => a.path.localeCompare(b.path))
-
-  const manifest = { version, files }
+  const manifest = { schemaVersion: 2, version, files, slots, features }
   await writeFile(outPath, JSON.stringify(manifest, null, 2) + '\n')
 
-  const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
-  console.log(`Wrote ${outPath}: ${files.length} files, ${(totalBytes / 1024 / 1024).toFixed(2)} MiB`)
+  const variantCount = slots.reduce((sum, s) => sum + s.variants.length, 0)
+  const allFiles = [
+    ...files,
+    ...slots.flatMap((s) => s.variants.flatMap((v) => v.files)),
+    ...features.flatMap((f) => f.files)
+  ]
+  const totalBytes = allFiles.reduce((sum, f) => sum + f.size, 0)
+
+  console.log(
+    `Wrote ${outPath}: ${files.length} base files, ${slots.length} slots (${variantCount} variants), ` +
+      `${features.length} features, ${allFiles.length} files total, ${(totalBytes / 1024 / 1024).toFixed(2)} MiB`
+  )
   if (stageDir) {
     console.log(`Staged flattened assets under ${stageDir}/`)
     console.log(`Publish with: gh release create ${tag} ${stageDir}/* ${outPath}`)

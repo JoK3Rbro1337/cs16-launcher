@@ -1,23 +1,57 @@
 /**
- * content-sync — keep the custom build content in sync with a CDN manifest.
+ * content-sync — keep the custom build content in sync with a CDN manifest,
+ * variant-aware.
  *
- * Fetches manifest.json, hashes each local file (sha256), diffs against the
- * manifest, and runs a concurrency-limited download queue for missing/changed
- * files. Downloads land in `<path>.part` and are renamed into place only after
- * their hash verifies — an interrupted sync just leaves a stray `.part` file
- * and the next run re-diffs and re-downloads it, which is the resume strategy
- * (no HTTP range requests). This is fully separate from launcher self-update
- * (electron-updater).
+ * Manifest schema v2 layers three kinds of file sets over the game install
+ * root:
+ *   - `files`   — the base pack, always synced (this is the entire v1
+ *                 schema; v1 manifests — no `schemaVersion`, or `files` with
+ *                 no `slots`/`features` — still work unchanged, they just
+ *                 normalize to empty slots/features).
+ *   - `slots`   — named categories (e.g. a weapon-skin slot), each with
+ *                 variants; exactly one variant per slot is "active" per the
+ *                 caller-supplied BuildProfile, and its files are merged in.
+ *   - `features`— optional toggles, each with a files array merged in when
+ *                 the profile has that feature enabled.
  *
- * Manifest hosting: GitHub Releases for now (per-file assets, flat names —
- * see scripts/generate-manifest.mjs). `path` in each entry is relative to the
+ * The three layers are merged path-by-path, in order base -> slots ->
+ * features (each layer's file for a given path wins over the previous
+ * layer's), into one "desired" file set for the current profile. Base
+ * therefore reappears automatically for a path once nothing else claims it,
+ * which is what makes switching a variant "restore" the base file with no
+ * special-case logic: it's just what the merge computes when the old
+ * variant is no longer part of the profile.
+ *
+ * What the merge can't recover on its own is a path a variant/feature
+ * introduced with *no* base equivalent — dropping that layer just makes the
+ * path vanish from "desired", with nothing to fall back to. `<gamePath>/
+ * .16x-launcher-state.json` exists for exactly this: it's the set of paths
+ * this launcher has itself written, so a sync can tell "no longer desired,
+ * safe to delete because we're the ones who put it there" apart from any
+ * other file sitting in the install (world files, configs, whatever) that
+ * we must never touch. A path only enters the state file when we actually
+ * verify writing it ourselves (a fresh download, or a hash match on a path
+ * that was already in the state file) — never merely because it happens to
+ * already match by coincidence (e.g. a base entry that's byte-identical to
+ * the vanilla Steam install). That asymmetry matters: adopting a coincidental
+ * match into "things we own" would make a later prune delete a file this
+ * launcher never actually put there.
+ *
+ * Downloads land in `<path>.part` and are renamed into place only after
+ * their hash verifies — an interrupted sync just leaves a stray `.part`
+ * file and the next run re-diffs and re-downloads it (no HTTP range
+ * requests; that's the resume story). This is fully separate from launcher
+ * self-update (electron-updater).
+ *
+ * Manifest hosting: GitHub Releases (per-file assets, flat names — see
+ * scripts/generate-manifest.mjs). Every file's `path` is relative to the
  * game install root, e.g. "cstrike/sound/weapons/deagle-1.wav".
  */
 
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, rename, rm } from 'node:fs/promises'
-import { dirname, resolve, sep } from 'node:path'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve, sep } from 'node:path'
 import { once } from 'node:events'
 import { detectSteam } from './steam-detect'
 
@@ -28,9 +62,38 @@ export interface ManifestFile {
   url: string
 }
 
+export interface ManifestVariant {
+  id: string
+  label: string
+  files: ManifestFile[]
+}
+
+export interface ManifestSlot {
+  id: string
+  label: string
+  variants: ManifestVariant[]
+}
+
+export interface ManifestFeature {
+  id: string
+  label: string
+  files: ManifestFile[]
+}
+
+/** Manifest as fetched and normalized — v1 manifests just get empty slots/features. */
 export interface ContentManifest {
   version: string
   files: ManifestFile[]
+  slots: ManifestSlot[]
+  features: ManifestFeature[]
+}
+
+/** The renderer's Home-page selections, keyed by slot/feature id. */
+export interface BuildProfile {
+  /** slotId -> selected variantId */
+  selections: Record<string, string>
+  /** featureId -> enabled */
+  features: Record<string, boolean>
 }
 
 export interface SyncProgress {
@@ -46,16 +109,41 @@ export interface SyncResult {
   contentDir: string
   updatedFiles: number
   skippedFiles: number
+  removedFiles: number
 }
 
+type FileOwner =
+  | { kind: 'base' }
+  | { kind: 'slot'; slotId: string; variantId: string }
+  | { kind: 'feature'; featureId: string }
+
+interface StateFile {
+  /** manifest-relative path -> the file this launcher last verified writing there */
+  files: Record<string, { sha256: string; owner: FileOwner }>
+}
+
+const STATE_FILENAME = '.16x-launcher-state.json'
 const CONCURRENCY = 4
+
+interface RawManifestInput {
+  version: string
+  files?: ManifestFile[]
+  slots?: ManifestSlot[]
+  features?: ManifestFeature[]
+}
 
 export async function fetchManifest(manifestUrl: string): Promise<ContentManifest> {
   const res = await fetch(manifestUrl)
   if (!res.ok) {
     throw new Error(`Failed to fetch manifest: HTTP ${res.status} ${res.statusText}`)
   }
-  return (await res.json()) as ContentManifest
+  const raw = (await res.json()) as RawManifestInput
+  return {
+    version: raw.version,
+    files: raw.files ?? [],
+    slots: raw.slots ?? [],
+    features: raw.features ?? []
+  }
 }
 
 async function hashFile(path: string): Promise<string | null> {
@@ -79,6 +167,72 @@ function resolveContentPath(root: string, relPath: string): string {
     throw new Error(`Manifest file path escapes content root: ${relPath}`)
   }
   return dest
+}
+
+async function loadState(contentDir: string): Promise<StateFile> {
+  try {
+    const text = await readFile(join(contentDir, STATE_FILENAME), 'utf-8')
+    const parsed = JSON.parse(text) as StateFile
+    return { files: parsed.files ?? {} }
+  } catch {
+    return { files: {} }
+  }
+}
+
+async function saveState(contentDir: string, state: StateFile): Promise<void> {
+  const destPath = join(contentDir, STATE_FILENAME)
+  const tmpPath = `${destPath}.part`
+  await writeFile(tmpPath, JSON.stringify(state, null, 2))
+  await rename(tmpPath, destPath)
+}
+
+/**
+ * Layer base -> slots -> features into one path -> file map for the given
+ * profile. An unknown/unselected slot (stale variant id, or no selection
+ * yet) simply contributes nothing, leaving base (or nothing) for its paths.
+ */
+function computeDesiredFiles(
+  manifest: ContentManifest,
+  profile: BuildProfile
+): Map<string, { file: ManifestFile; owner: FileOwner }> {
+  const desired = new Map<string, { file: ManifestFile; owner: FileOwner }>()
+
+  for (const file of manifest.files) {
+    desired.set(file.path, { file, owner: { kind: 'base' } })
+  }
+
+  for (const slot of manifest.slots) {
+    const variant = slot.variants.find((v) => v.id === profile.selections[slot.id])
+    if (!variant) continue
+    for (const file of variant.files) {
+      desired.set(file.path, { file, owner: { kind: 'slot', slotId: slot.id, variantId: variant.id } })
+    }
+  }
+
+  for (const feature of manifest.features) {
+    if (!profile.features[feature.id]) continue
+    for (const file of feature.files) {
+      desired.set(file.path, { file, owner: { kind: 'feature', featureId: feature.id } })
+    }
+  }
+
+  return desired
+}
+
+/** Deletes paths the launcher previously wrote that the current profile no longer wants. */
+async function pruneOrphans(
+  contentDir: string,
+  desired: Map<string, { file: ManifestFile; owner: FileOwner }>,
+  state: StateFile
+): Promise<string[]> {
+  const removed: string[] = []
+  for (const path of Object.keys(state.files)) {
+    if (desired.has(path)) continue
+    await rm(resolveContentPath(contentDir, path), { force: true })
+    delete state.files[path]
+    removed.push(path)
+  }
+  return removed
 }
 
 async function downloadFile(
@@ -139,6 +293,7 @@ async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promis
 
 export async function syncContent(
   manifestUrl: string,
+  profile: BuildProfile,
   onProgress: (progress: SyncProgress) => void
 ): Promise<SyncResult> {
   const detection = await detectSteam()
@@ -148,33 +303,43 @@ export async function syncContent(
   const contentDir = detection.gamePath
 
   const manifest = await fetchManifest(manifestUrl)
+  const desired = computeDesiredFiles(manifest, profile)
+  const state = await loadState(contentDir)
+
+  const removedPaths = await pruneOrphans(contentDir, desired, state)
 
   // Diff pass: hash existing files to find what actually needs downloading, so
   // progress totals below reflect this run's real work (and reach 100%).
-  const toDownload: ManifestFile[] = []
+  const entries = [...desired.entries()]
+  const toDownload: { path: string; file: ManifestFile; owner: FileOwner }[] = []
   let skippedFiles = 0
-  await runPool(manifest.files, CONCURRENCY, async (file) => {
-    const destPath = resolveContentPath(contentDir, file.path)
+  await runPool(entries, CONCURRENCY, async ([path, { file, owner }]) => {
+    const destPath = resolveContentPath(contentDir, path)
     const existingHash = await hashFile(destPath)
     if (existingHash === file.sha256) {
       skippedFiles++
+      // Only refresh ownership for a path we already tracked — never adopt a
+      // path into "things we own" just because it happens to already match.
+      if (path in state.files) {
+        state.files[path] = { sha256: file.sha256, owner }
+      }
     } else {
-      toDownload.push(file)
+      toDownload.push({ path, file, owner })
     }
   })
 
   const progress: SyncProgress = {
     totalFiles: toDownload.length,
     completedFiles: 0,
-    totalBytes: toDownload.reduce((sum, f) => sum + f.size, 0),
+    totalBytes: toDownload.reduce((sum, d) => sum + d.file.size, 0),
     downloadedBytes: 0,
     currentFile: null
   }
   onProgress({ ...progress })
 
-  await runPool(toDownload, CONCURRENCY, async (file) => {
-    const destPath = resolveContentPath(contentDir, file.path)
-    progress.currentFile = file.path
+  await runPool(toDownload, CONCURRENCY, async ({ path, file, owner }) => {
+    const destPath = resolveContentPath(contentDir, path)
+    progress.currentFile = path
     onProgress({ ...progress })
 
     await downloadFile(file, destPath, (n) => {
@@ -182,10 +347,19 @@ export async function syncContent(
       onProgress({ ...progress })
     })
 
+    state.files[path] = { sha256: file.sha256, owner }
     progress.completedFiles++
     progress.currentFile = null
     onProgress({ ...progress })
   })
 
-  return { version: manifest.version, contentDir, updatedFiles: toDownload.length, skippedFiles }
+  await saveState(contentDir, state)
+
+  return {
+    version: manifest.version,
+    contentDir,
+    updatedFiles: toDownload.length,
+    skippedFiles,
+    removedFiles: removedPaths.length
+  }
 }
