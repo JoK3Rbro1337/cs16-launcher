@@ -1,5 +1,5 @@
 {
-  "name": "cs16-launcher",
+  "name": "16x-launcher",
   "version": "0.1.0",
   "description": "Launcher for a licensed Counter-Strike 1.6 build: game wrapper + custom-content auto-update + server browser (Windows/Linux)",
   "author": "cs16-launcher",

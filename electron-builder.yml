@@ -1,5 +1,7 @@
 appId: com.cs16launcher.app
-productName: CS 1.6 Launcher
+productName: 1.6X Launcher
+executableName: 16x-launcher
+artifactName: '${name}-${version}.${ext}'
 directories:
   buildResources: build
   output: dist

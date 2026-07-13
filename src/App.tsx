@@ -17,7 +17,7 @@ export default function App(): React.JSX.Element {
   return (
     <div className="app">
       <nav className="sidebar">
-        <div className="brand">CS 1.6</div>
+        <div className="brand">1.6X</div>
         {TABS.map(({ id, label }) => (
           <button
             key={id}
