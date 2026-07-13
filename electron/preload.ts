@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
 import type { GameServer } from './modules/server-browser'
+import type { SyncProgress, SyncResult } from './modules/content-sync'
 
 /**
  * Renderer-facing API. The renderer has no Node/Electron access — every
@@ -12,7 +13,14 @@ const launcher = {
   connect: (ip: string, port: number): Promise<void> =>
     ipcRenderer.invoke('launch:connect', ip, port),
   queryServers: (): Promise<GameServer[]> => ipcRenderer.invoke('servers:query'),
-  syncContent: (): Promise<void> => ipcRenderer.invoke('content:sync')
+  syncContent: (manifestUrl: string): Promise<SyncResult> =>
+    ipcRenderer.invoke('content:sync', manifestUrl),
+  onSyncProgress: (callback: (progress: SyncProgress) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: SyncProgress): void =>
+      callback(progress)
+    ipcRenderer.on('content:progress', listener)
+    return () => ipcRenderer.removeListener('content:progress', listener)
+  }
 }
 
 export type LauncherApi = typeof launcher

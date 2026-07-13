@@ -13,7 +13,8 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "build:win": "electron-vite build && electron-builder --win"
+    "build:win": "electron-vite build && electron-builder --win",
+    "manifest:generate": "node scripts/generate-manifest.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "3.0.2",

@@ -42,7 +42,9 @@ function registerIpc(): void {
   ipcMain.handle('launch:play', () => playGame())
   ipcMain.handle('launch:connect', (_e, ip: string, port: number) => connectToServer(ip, port))
   ipcMain.handle('servers:query', () => queryServers())
-  ipcMain.handle('content:sync', () => syncContent())
+  ipcMain.handle('content:sync', (event, manifestUrl: string) =>
+    syncContent(manifestUrl, (progress) => event.sender.send('content:progress', progress))
+  )
 }
 
 app.whenReady().then(() => {

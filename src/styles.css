@@ -128,3 +128,45 @@ button.primary:disabled {
   color: #e5484d;
   font-size: 14px;
 }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 520px;
+}
+
+.text-input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+  font-family: monospace;
+}
+
+.text-input:focus {
+  outline: 1px solid var(--accent);
+}
+
+.sync-progress {
+  margin-top: 16px;
+  max-width: 520px;
+}
+
+.progress-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s ease-out;
+}
