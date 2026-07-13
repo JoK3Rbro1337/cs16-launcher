@@ -113,7 +113,7 @@ export default function Settings(): React.JSX.Element {
       {state === 'done' && result && (
         <p className="muted">
           Synced content v{result.version}: {result.updatedFiles} updated, {result.skippedFiles}{' '}
-          already up to date, {result.removedFiles} removed.
+          already up to date, {result.restoredFiles} restored, {result.removedFiles} removed.
         </p>
       )}
 

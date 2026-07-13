@@ -27,7 +27,7 @@
  * path vanish from "desired", with nothing to fall back to. `<gamePath>/
  * .16x-launcher-state.json` exists for exactly this: it's the set of paths
  * this launcher has itself written, so a sync can tell "no longer desired,
- * safe to delete because we're the ones who put it there" apart from any
+ * safe to reclaim because we're the ones who put it there" apart from any
  * other file sitting in the install (world files, configs, whatever) that
  * we must never touch. A path only enters the state file when we actually
  * verify writing it ourselves (a fresh download, or a hash match on a path
@@ -36,6 +36,21 @@
  * the vanilla Steam install). That asymmetry matters: adopting a coincidental
  * match into "things we own" would make a later prune delete a file this
  * launcher never actually put there.
+ *
+ * "Reclaim" is a restore, not always a delete — a manifest's `files` (base)
+ * commonly does not enumerate every stock game file (a real pack only lists
+ * what it manages), so the very first time we're about to overwrite a path,
+ * whatever is already sitting there (a stock Steam-installed file, or a
+ * player's own file) might be the *only* copy of it that exists — there's no
+ * base entry to fall back to. Before that first overwrite, we copy the
+ * existing file to `<gamePath>/.16x-launcher-backups/`, mirroring its
+ * relative path. Once a path has a backup, later overwrites of it (e.g.
+ * switching between variants that both touch the same path) never re-back it
+ * up — the backup must stay the *original*, pre-launcher content, not some
+ * intermediate variant's. When a path is later orphaned, prune restores from
+ * the backup (and removes it) if one exists, and only deletes outright when
+ * there's no backup — meaning the path never had prior content, so it's
+ * purely launcher-introduced and safe to remove entirely.
  *
  * Downloads land in `<path>.part` and are renamed into place only after
  * their hash verifies — an interrupted sync just leaves a stray `.part`
@@ -50,7 +65,7 @@
 
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { once } from 'node:events'
 import { detectSteam } from './steam-detect'
@@ -110,6 +125,7 @@ export interface SyncResult {
   updatedFiles: number
   skippedFiles: number
   removedFiles: number
+  restoredFiles: number
 }
 
 type FileOwner =
@@ -123,6 +139,7 @@ interface StateFile {
 }
 
 const STATE_FILENAME = '.16x-launcher-state.json'
+const BACKUP_DIRNAME = '.16x-launcher-backups'
 const CONCURRENCY = 4
 
 interface RawManifestInput {
@@ -167,6 +184,34 @@ function resolveContentPath(root: string, relPath: string): string {
     throw new Error(`Manifest file path escapes content root: ${relPath}`)
   }
   return dest
+}
+
+function resolveBackupPath(contentDir: string, relPath: string): string {
+  return resolveContentPath(join(contentDir, BACKUP_DIRNAME), relPath)
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Preserves whatever is currently at `destPath` before we overwrite it, but
+ * only the first time: if a backup already exists for this path, it's the
+ * true pre-launcher original and must not be clobbered by an intermediate
+ * variant's bytes. If nothing exists at `destPath` yet, there's nothing to
+ * preserve.
+ */
+async function backupIfNeeded(contentDir: string, path: string, destPath: string): Promise<void> {
+  const backupPath = resolveBackupPath(contentDir, path)
+  if (await pathExists(backupPath)) return
+  if (!(await pathExists(destPath))) return
+  await mkdir(dirname(backupPath), { recursive: true })
+  await copyFile(destPath, backupPath)
 }
 
 async function loadState(contentDir: string): Promise<StateFile> {
@@ -219,20 +264,34 @@ function computeDesiredFiles(
   return desired
 }
 
-/** Deletes paths the launcher previously wrote that the current profile no longer wants. */
+/**
+ * Reclaims paths the launcher previously wrote that the current profile no
+ * longer wants: restored from `.16x-launcher-backups/` when a backup exists
+ * (there was real pre-launcher content at this path), deleted outright only
+ * when there isn't (the path was purely launcher-introduced).
+ */
 async function pruneOrphans(
   contentDir: string,
   desired: Map<string, { file: ManifestFile; owner: FileOwner }>,
   state: StateFile
-): Promise<string[]> {
+): Promise<{ removed: string[]; restored: string[] }> {
   const removed: string[] = []
+  const restored: string[] = []
   for (const path of Object.keys(state.files)) {
     if (desired.has(path)) continue
-    await rm(resolveContentPath(contentDir, path), { force: true })
+    const destPath = resolveContentPath(contentDir, path)
+    const backupPath = resolveBackupPath(contentDir, path)
+    if (await pathExists(backupPath)) {
+      await mkdir(dirname(destPath), { recursive: true })
+      await rename(backupPath, destPath)
+      restored.push(path)
+    } else {
+      await rm(destPath, { force: true })
+      removed.push(path)
+    }
     delete state.files[path]
-    removed.push(path)
   }
-  return removed
+  return { removed, restored }
 }
 
 async function downloadFile(
@@ -306,7 +365,7 @@ export async function syncContent(
   const desired = computeDesiredFiles(manifest, profile)
   const state = await loadState(contentDir)
 
-  const removedPaths = await pruneOrphans(contentDir, desired, state)
+  const { removed: removedPaths, restored: restoredPaths } = await pruneOrphans(contentDir, desired, state)
 
   // Diff pass: hash existing files to find what actually needs downloading, so
   // progress totals below reflect this run's real work (and reach 100%).
@@ -339,6 +398,7 @@ export async function syncContent(
 
   await runPool(toDownload, CONCURRENCY, async ({ path, file, owner }) => {
     const destPath = resolveContentPath(contentDir, path)
+    await backupIfNeeded(contentDir, path, destPath)
     progress.currentFile = path
     onProgress({ ...progress })
 
@@ -360,6 +420,7 @@ export async function syncContent(
     contentDir,
     updatedFiles: toDownload.length,
     skippedFiles,
-    removedFiles: removedPaths.length
+    removedFiles: removedPaths.length,
+    restoredFiles: restoredPaths.length
   }
 }
