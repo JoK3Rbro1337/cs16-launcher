@@ -3,7 +3,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { detectSteam } from './modules/steam-detect'
 import { playGame, connectToServer } from './modules/launch'
-import { queryServers } from './modules/server-browser'
+import { queryServers, type FavoriteServer } from './modules/server-browser'
 import { syncContent } from './modules/content-sync'
 
 function createWindow(): void {
@@ -41,7 +41,7 @@ function registerIpc(): void {
   ipcMain.handle('steam:detect', () => detectSteam())
   ipcMain.handle('launch:play', () => playGame())
   ipcMain.handle('launch:connect', (_e, ip: string, port: number) => connectToServer(ip, port))
-  ipcMain.handle('servers:query', () => queryServers())
+  ipcMain.handle('servers:query', (_e, favorites: FavoriteServer[]) => queryServers(favorites))
   ipcMain.handle('content:sync', (event, manifestUrl: string) =>
     syncContent(manifestUrl, (progress) => event.sender.send('content:progress', progress))
   )

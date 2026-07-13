@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
-import type { GameServer } from './modules/server-browser'
+import type { FavoriteServer, GameServer } from './modules/server-browser'
 import type { SyncProgress, SyncResult } from './modules/content-sync'
 
 /**
@@ -12,7 +12,8 @@ const launcher = {
   play: (): Promise<void> => ipcRenderer.invoke('launch:play'),
   connect: (ip: string, port: number): Promise<void> =>
     ipcRenderer.invoke('launch:connect', ip, port),
-  queryServers: (): Promise<GameServer[]> => ipcRenderer.invoke('servers:query'),
+  queryServers: (favorites: FavoriteServer[]): Promise<GameServer[]> =>
+    ipcRenderer.invoke('servers:query', favorites),
   syncContent: (manifestUrl: string): Promise<SyncResult> =>
     ipcRenderer.invoke('content:sync', manifestUrl),
   onSyncProgress: (callback: (progress: SyncProgress) => void): (() => void) => {

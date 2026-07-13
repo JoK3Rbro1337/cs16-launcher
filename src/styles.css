@@ -170,3 +170,92 @@ button.primary:disabled {
   background: var(--accent);
   transition: width 0.15s ease-out;
 }
+
+.field-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.field-row .text-input {
+  flex: 1;
+  max-width: 320px;
+}
+
+button.secondary {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--border);
+}
+
+button.secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+button.star {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.server-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.server-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.server-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.server-table tr.unreachable {
+  opacity: 0.5;
+}
+
+.favorite-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.favorite-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  color: var(--muted);
+  font-family: monospace;
+}
