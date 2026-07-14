@@ -17,6 +17,11 @@
  * variant/feature folder overrides its display label; otherwise the label
  * is derived from the folder name.
  *
+ * Any file landing at cstrike/*.cfg (other than config.cfg/autoexec.cfg) is
+ * automatically tagged "type": "exec-cfg" — content-sync execs those from a
+ * managed block it maintains in the player's cstrike/autoexec.cfg whenever
+ * they're part of the active profile.
+ *
  * If none of base/, slots/, features/ exist under --content, falls back to
  * the old flat/legacy mode: --content is treated as a single base pack
  * (same as content-sync schemaVersion 1), with --prefix behaving as before.
@@ -107,6 +112,15 @@ function toAssetName(rawPath) {
   return rawPath.replace(/\//g, '__').replace(/[^A-Za-z0-9._-]/g, '-')
 }
 
+/** Mirrors content-sync.ts's isExecCfg convention: any cstrike/*.cfg other than config.cfg/autoexec.cfg. */
+function inferFileType(manifestPath) {
+  const lower = manifestPath.toLowerCase()
+  if (!lower.startsWith('cstrike/') || !lower.endsWith('.cfg')) return undefined
+  const base = lower.slice(lower.lastIndexOf('/') + 1)
+  if (base === 'config.cfg' || base === 'autoexec.cfg') return undefined
+  return 'exec-cfg'
+}
+
 function humanize(id) {
   return id.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
@@ -137,8 +151,9 @@ async function collectFiles(sourceDir, manifestPrefix, assetNamespace, baseUrl, 
     const manifestPath = manifestPrefix ? `${manifestPrefix}/${relPath}` : relPath
     const assetName = toAssetName(`${assetNamespace}/${relPath}`)
     const [sha256, { size }] = await Promise.all([hashFile(filePath), stat(filePath)])
+    const type = inferFileType(manifestPath)
 
-    files.push({ path: manifestPath, sha256, size, url: `${baseUrl}/${assetName}` })
+    files.push({ path: manifestPath, sha256, size, url: `${baseUrl}/${assetName}`, ...(type ? { type } : {}) })
 
     if (stageDir) {
       await mkdir(stageDir, { recursive: true })

@@ -61,6 +61,23 @@
  * Manifest hosting: GitHub Releases (per-file assets, flat names — see
  * scripts/generate-manifest.mjs). Every file's `path` is relative to the
  * game install root, e.g. "cstrike/sound/weapons/deagle-1.wav".
+ *
+ * Config files get one more layer on top: any desired file that is a game
+ * config (`type: "exec-cfg"`, or by convention any cstrike/*.cfg other than
+ * config.cfg/autoexec.cfg) syncs as a normal file through the same
+ * base/slot/feature pipeline above — nothing special there — but is also
+ * `exec`'d automatically by writing an `exec <path>` line into a clearly
+ * delimited block inside cstrike/autoexec.cfg, which the engine already
+ * execs on startup. The block is fully recomputed from the current desired
+ * set on every sync (rewritten on variant switch, emptied on deselect) and
+ * everything outside its BEGIN/END markers — a player's own autoexec lines
+ * — is left untouched. autoexec.cfg is backed up on its first-ever write via
+ * the same backupIfNeeded used for regular files, but is deliberately never
+ * added to the state file's whole-file ownership map: we only ever own the
+ * block inside it, never the file itself, so it must never go through
+ * pruneOrphans' restore-or-delete. config.cfg is excluded from this
+ * mechanism entirely and must never be written by the launcher — the engine
+ * overwrites it on exit, so anything we wrote there would just be lost.
  */
 
 import { createHash } from 'node:crypto'
@@ -75,6 +92,13 @@ export interface ManifestFile {
   sha256: string
   size: number
   url: string
+  /**
+   * 'exec-cfg' marks a file as a game config that the managed autoexec.cfg
+   * block should `exec` when this file is part of the active profile — see
+   * isExecCfg below for the equivalent folder/extension convention that
+   * applies even when this is unset.
+   */
+  type?: 'exec-cfg'
 }
 
 export interface ManifestVariant {
@@ -141,6 +165,10 @@ interface StateFile {
 const STATE_FILENAME = '.16x-launcher-state.json'
 const BACKUP_DIRNAME = '.16x-launcher-backups'
 const CONCURRENCY = 4
+
+const AUTOEXEC_PATH = 'cstrike/autoexec.cfg'
+const BLOCK_BEGIN = '// === 16X LAUNCHER MANAGED BLOCK — DO NOT EDIT BELOW THIS LINE ==='
+const BLOCK_END = '// === 16X LAUNCHER MANAGED BLOCK — END ==='
 
 interface RawManifestInput {
   version: string
@@ -262,6 +290,74 @@ function computeDesiredFiles(
   }
 
   return desired
+}
+
+/** True for a game config that the managed autoexec.cfg block should `exec`. */
+function isExecCfg(file: ManifestFile): boolean {
+  if (file.type === 'exec-cfg') return true
+  const lower = file.path.toLowerCase()
+  if (!lower.startsWith('cstrike/')) return false
+  if (!lower.endsWith('.cfg')) return false
+  const base = lower.slice(lower.lastIndexOf('/') + 1)
+  return base !== 'config.cfg' && base !== 'autoexec.cfg'
+}
+
+/** A manifest path relative to the game root -> the name the engine's `exec` expects (relative to cstrike/). */
+function toExecName(path: string): string {
+  const prefix = 'cstrike/'
+  return path.toLowerCase().startsWith(prefix) ? path.slice(prefix.length) : path
+}
+
+/** Removes a prior managed block (if any), leaving everything else untouched. */
+function stripManagedBlock(lines: string[]): string[] {
+  const beginIndex = lines.findIndex((line) => line.trim() === BLOCK_BEGIN)
+  if (beginIndex === -1) return lines
+  let endIndex = lines.findIndex((line, i) => i > beginIndex && line.trim() === BLOCK_END)
+  if (endIndex === -1) endIndex = lines.length - 1
+  const before = lines.slice(0, beginIndex)
+  const after = lines.slice(endIndex + 1)
+  // Drop the single blank separator line we insert before a freshly written
+  // block, so repeated rewrites don't accumulate blank lines over time.
+  if (before.length > 0 && before[before.length - 1].trim() === '') before.pop()
+  return [...before, ...after]
+}
+
+/** Recomputes autoexec.cfg's full text: existing content untouched, managed block rewritten (or removed). */
+function buildAutoexecContent(existingText: string, execPaths: string[]): string {
+  const lines = existingText.length > 0 ? existingText.split('\n') : []
+  const stripped = stripManagedBlock(lines)
+  if (execPaths.length === 0) {
+    // stripped's array shape already encodes the original trailing-newline
+    // state (a trailing '' element means the source text ended with '\n'),
+    // so join alone reproduces it exactly — appending another '\n' here
+    // would add a blank line the player never had.
+    return stripped.join('\n')
+  }
+  const block = [BLOCK_BEGIN, ...execPaths.map((path) => `exec ${path}`), BLOCK_END]
+  const needsGap = stripped.length > 0 && stripped[stripped.length - 1].trim() !== ''
+  const nextLines = needsGap ? [...stripped, '', ...block] : [...stripped, ...block]
+  return `${nextLines.join('\n')}\n`
+}
+
+/**
+ * Rewrites the managed block inside cstrike/autoexec.cfg from the current
+ * desired exec-cfg set. Deliberately outside the state-file/pruneOrphans
+ * ownership model — see the module doc comment for why.
+ */
+async function syncAutoexec(contentDir: string, execPaths: string[]): Promise<void> {
+  const destPath = resolveContentPath(contentDir, AUTOEXEC_PATH)
+  const existingText = await readFile(destPath, 'utf-8').catch((err) => {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return ''
+    throw err
+  })
+  const nextText = buildAutoexecContent(existingText, execPaths)
+  if (nextText === existingText) return
+
+  await backupIfNeeded(contentDir, AUTOEXEC_PATH, destPath)
+  await mkdir(dirname(destPath), { recursive: true })
+  const tmpPath = `${destPath}.part`
+  await writeFile(tmpPath, nextText)
+  await rename(tmpPath, destPath)
 }
 
 /**
@@ -412,6 +508,12 @@ export async function syncContent(
     progress.currentFile = null
     onProgress({ ...progress })
   })
+
+  const execPaths = [...desired.values()]
+    .filter(({ file }) => isExecCfg(file))
+    .map(({ file }) => toExecName(file.path))
+    .sort()
+  await syncAutoexec(contentDir, execPaths)
 
   await saveState(contentDir, state)
 
