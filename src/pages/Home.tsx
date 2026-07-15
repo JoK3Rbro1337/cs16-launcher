@@ -1,259 +1,126 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
-import type { BuildProfile, ContentManifest, SyncProgress } from '../../electron/modules/content-sync'
+import type { BuildProfile, SyncProgress } from '../../electron/modules/content-sync'
+import type { GameServer } from '../../electron/modules/server-browser'
 import {
   BUILD_PROFILE_KEY,
+  LAST_SERVER_KEY,
   MANIFEST_URL_KEY,
-  SECTION_COLLAPSE_KEY,
   SYNCED_PROFILE_KEY,
-  loadJSON,
-  saveJSON
+  loadJSON
 } from '../lib/storage'
 
-interface SkinItem {
-  id: string
+type PlayState = 'steam-missing' | 'update' | 'syncing' | 'launching' | 'idle'
+
+interface Toast {
+  id: number
+  message: string
+}
+
+interface LastServer {
+  ip: string
+  port: number
   name: string
+  map: string
+  players: number
+  maxPlayers: number
 }
-
-interface SkinCategory {
-  id: string
-  label: string
-  items: SkinItem[]
-}
-
-interface Feature {
-  id: string
-  label: string
-}
-
-// Placeholder content, used until a manifest URL is configured in Settings
-// (or if fetching it fails) — see the note rendered below the grid.
-const PLACEHOLDER_CATEGORIES: SkinCategory[] = [
-  {
-    id: 'standard',
-    label: 'Standard',
-    items: [
-      { id: 'std-deagle', name: 'Desert Eagle' },
-      { id: 'std-ak47', name: 'AK-47' },
-      { id: 'std-m4a1', name: 'M4A1' },
-      { id: 'std-awp', name: 'AWP' },
-      { id: 'std-usp', name: 'USP' },
-      { id: 'std-mp5', name: 'MP5' }
-    ]
-  },
-  {
-    id: 'knives',
-    label: 'Knives',
-    items: [
-      { id: 'knife-karambit', name: 'Karambit' },
-      { id: 'knife-butterfly', name: 'Butterfly' },
-      { id: 'knife-bayonet', name: 'Bayonet' },
-      { id: 'knife-falchion', name: 'Falchion' },
-      { id: 'knife-bowie', name: 'Bowie' }
-    ]
-  },
-  {
-    id: 'build1',
-    label: 'Build #1',
-    items: [
-      { id: 'b1-deagle', name: 'Desert Eagle' },
-      { id: 'b1-ak47', name: 'AK-47' },
-      { id: 'b1-m4a1', name: 'M4A1' },
-      { id: 'b1-awp', name: 'AWP' },
-      { id: 'b1-mp5', name: 'MP5' }
-    ]
-  },
-  {
-    id: 'build2',
-    label: 'Build #2',
-    items: [
-      { id: 'b2-deagle', name: 'Desert Eagle' },
-      { id: 'b2-ak47', name: 'AK-47' },
-      { id: 'b2-awp', name: 'AWP' },
-      { id: 'b2-karambit', name: 'Karambit' },
-      { id: 'b2-usp', name: 'USP' }
-    ]
-  }
-]
-
-const PLACEHOLDER_FEATURES: Feature[] = [
-  { id: 'csgo-hud', label: 'CS:GO HUD' },
-  { id: 'ru-voiceover', label: 'Russian voiceover' },
-  { id: 'csgo-awp-crosshair', label: 'CS:GO AWP crosshair' }
-]
 
 function emptyProfile(): BuildProfile {
   return { selections: {}, features: {} }
 }
 
-function defaultCollapsed(categories: SkinCategory[]): Record<string, boolean> {
-  const state: Record<string, boolean> = { system: true }
-  for (const category of categories) state[category.id] = false
-  return state
-}
-
-/**
- * Fills in a selection for any slot that doesn't have one yet (or whose
- * stored selection no longer exists) and a false default for any new
- * feature — without touching selections/toggles the user already made, so
- * a manifest re-fetch never silently resets an existing choice.
- */
-function reconcileProfile(profile: BuildProfile, categories: SkinCategory[], features: Feature[]): BuildProfile {
-  const selections = { ...profile.selections }
-  for (const category of categories) {
-    const current = selections[category.id]
-    const stillValid = category.items.some((item) => item.id === current)
-    if (!stillValid && category.items.length > 0) selections[category.id] = category.items[0].id
-  }
-  const featureState = { ...profile.features }
-  for (const feature of features) {
-    if (!(feature.id in featureState)) featureState[feature.id] = false
-  }
-  return { selections, features: featureState }
-}
-
-function manifestToCategories(manifest: ContentManifest): SkinCategory[] {
-  return manifest.slots.map((slot) => ({
-    id: slot.id,
-    label: slot.label,
-    items: slot.variants.map((variant) => ({ id: variant.id, name: variant.label }))
-  }))
-}
-
-function manifestToFeatures(manifest: ContentManifest): Feature[] {
-  return manifest.features.map((feature) => ({ id: feature.id, label: feature.label }))
-}
-
-function CollapsibleSection({
-  title,
-  collapsed,
-  onToggle,
-  children
-}: {
-  title: string
-  collapsed: boolean
-  onToggle: () => void
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <div className="collapsible">
-      <button className="collapsible-header" onClick={onToggle}>
-        <span className={`chevron${collapsed ? '' : ' open'}`}>▸</span>
-        <span>{title}</span>
-      </button>
-      {!collapsed && <div className="collapsible-body">{children}</div>}
-    </div>
-  )
+function pingTone(ping: number | null): string {
+  if (ping === null) return ''
+  if (ping < 50) return ' ping-ok'
+  if (ping <= 120) return ' ping-warn'
+  return ' ping-danger'
 }
 
 export default function Home(): React.JSX.Element {
   const [detection, setDetection] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
-  const [launchError, setLaunchError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<BuildProfile>(() => loadJSON(BUILD_PROFILE_KEY, emptyProfile()))
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+
+  const [manifestUrl] = useState(() => localStorage.getItem(MANIFEST_URL_KEY) ?? '')
+  const [profile] = useState<BuildProfile>(() => loadJSON(BUILD_PROFILE_KEY, emptyProfile()))
   const [syncedProfileJSON, setSyncedProfileJSON] = useState<string | null>(() =>
     localStorage.getItem(SYNCED_PROFILE_KEY)
   )
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
-    loadJSON(SECTION_COLLAPSE_KEY, defaultCollapsed(PLACEHOLDER_CATEGORIES))
-  )
-
-  const [manifestUrl] = useState(() => localStorage.getItem(MANIFEST_URL_KEY) ?? '')
-  const [manifest, setManifest] = useState<ContentManifest | null>(null)
-  const [manifestError, setManifestError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null)
+  const [launching, setLaunching] = useState(false)
 
-  const usingManifest = manifestUrl !== '' && manifest !== null
-  const categories = usingManifest ? manifestToCategories(manifest) : PLACEHOLDER_CATEGORIES
-  const features = usingManifest ? manifestToFeatures(manifest) : PLACEHOLDER_FEATURES
-  const dirty = manifestUrl !== '' && JSON.stringify(profile) !== syncedProfileJSON
+  const [lastServer] = useState<LastServer | null>(() => loadJSON<LastServer | null>(LAST_SERVER_KEY, null))
+  const [liveServer, setLiveServer] = useState<GameServer | null>(null)
+  const [connecting, setConnecting] = useState(false)
+
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
 
   useEffect(() => {
     window.launcher
       .detectSteam()
       .then(setDetection)
       .catch(() => setDetection('error'))
+    window.launcher.getAppVersion().then(setAppVersion)
   }, [])
-
-  useEffect(() => {
-    if (!manifestUrl) return
-    window.launcher
-      .fetchManifest(manifestUrl)
-      .then((m) => {
-        setManifest(m)
-        setManifestError(null)
-      })
-      .catch((err) => {
-        setManifest(null)
-        setManifestError(err instanceof Error ? err.message : String(err))
-      })
-  }, [manifestUrl])
 
   useEffect(() => {
     return window.launcher.onSyncProgress(setSyncProgress)
   }, [])
 
-  // Fill in defaults for slots/features that don't have a stored choice yet
-  // (new manifest, or first run) without clobbering existing selections.
+  // Re-query on every visit to Home — the persisted snapshot goes stale
+  // fast (players/map/ping all change live), so refresh it each time the
+  // hero is shown rather than trusting what was true at connect time.
   useEffect(() => {
-    setProfile((prev) => {
-      const next = reconcileProfile(prev, categories, features)
-      if (JSON.stringify(next) !== JSON.stringify(prev)) saveJSON(BUILD_PROFILE_KEY, next)
-      return next
-    })
-  }, [categories.length, features.length, usingManifest])
+    if (!lastServer) return
+    window.launcher
+      .queryServer(lastServer.ip, lastServer.port)
+      .then(setLiveServer)
+      .catch(() => setLiveServer(null))
+  }, [lastServer])
+
+  function dismissToast(id: number): void {
+    const timer = toastTimers.current.get(id)
+    if (timer) clearTimeout(timer)
+    toastTimers.current.delete(id)
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  function pushToast(message: string): void {
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev.slice(-2), { id, message }])
+    toastTimers.current.set(
+      id,
+      setTimeout(() => dismissToast(id), 4000)
+    )
+  }
+
+  function pinToast(id: number): void {
+    const timer = toastTimers.current.get(id)
+    if (timer) clearTimeout(timer)
+  }
+
+  function unpinToast(id: number): void {
+    toastTimers.current.set(
+      id,
+      setTimeout(() => dismissToast(id), 4000)
+    )
+  }
 
   const installed = detection !== 'loading' && detection !== 'error' && detection.installed
+  const steamFound = detection !== 'loading' && detection !== 'error' && detection.steamPath !== null
+  const dirty = manifestUrl !== '' && JSON.stringify(profile) !== syncedProfileJSON
 
-  function markSynced(synced: BuildProfile): void {
-    const json = JSON.stringify(synced)
-    localStorage.setItem(SYNCED_PROFILE_KEY, json)
-    setSyncedProfileJSON(json)
-  }
-
-  async function handlePlay(): Promise<void> {
-    setLaunchError(null)
-    try {
-      if (manifestUrl && dirty) {
-        setSyncing(true)
-        setSyncProgress(null)
-        await window.launcher.syncContent(manifestUrl, profile)
-        markSynced(profile)
-        setSyncing(false)
-      }
-      await window.launcher.play()
-    } catch (err) {
-      setSyncing(false)
-      setLaunchError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  function selectItem(categoryId: string, itemId: string): void {
-    setProfile((prev) => {
-      const next = { ...prev, selections: { ...prev.selections, [categoryId]: itemId } }
-      saveJSON(BUILD_PROFILE_KEY, next)
-      return next
-    })
-  }
-
-  function toggleFeature(featureId: string): void {
-    setProfile((prev) => {
-      const next = {
-        ...prev,
-        features: { ...prev.features, [featureId]: !prev.features[featureId] }
-      }
-      saveJSON(BUILD_PROFILE_KEY, next)
-      return next
-    })
-  }
-
-  function toggleSection(sectionId: string): void {
-    setCollapsed((prev) => {
-      const next = { ...prev, [sectionId]: !prev[sectionId] }
-      saveJSON(SECTION_COLLAPSE_KEY, next)
-      return next
-    })
-  }
+  const playState: PlayState = !installed
+    ? 'steam-missing'
+    : launching
+      ? 'launching'
+      : syncing
+        ? 'syncing'
+        : dirty
+          ? 'update'
+          : 'idle'
 
   const pct =
     syncProgress && syncProgress.totalBytes > 0
@@ -262,97 +129,150 @@ export default function Home(): React.JSX.Element {
         ? 100
         : 0
 
+  function markSynced(synced: BuildProfile): void {
+    const json = JSON.stringify(synced)
+    localStorage.setItem(SYNCED_PROFILE_KEY, json)
+    setSyncedProfileJSON(json)
+  }
+
+  async function handlePlay(): Promise<void> {
+    try {
+      if (manifestUrl && dirty) {
+        setSyncing(true)
+        setSyncProgress(null)
+        await window.launcher.syncContent(manifestUrl, profile)
+        markSynced(profile)
+        setSyncing(false)
+      }
+      setLaunching(true)
+      await window.launcher.play()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSyncing(false)
+      setLaunching(false)
+    }
+  }
+
+  async function handleFixSteam(): Promise<void> {
+    try {
+      await window.launcher.fixSteam(steamFound)
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleConnectLast(): Promise<void> {
+    if (!lastServer) return
+    setConnecting(true)
+    try {
+      await window.launcher.connect(lastServer.ip, lastServer.port)
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const syncLabel = !manifestUrl
+    ? 'No content pack configured'
+    : syncing
+      ? 'Syncing content…'
+      : dirty
+        ? 'Content changes pending'
+        : 'Content up to date'
+
+  const serverView = liveServer ?? lastServer
+  const pingLabel = !liveServer
+    ? lastServer
+      ? '…'
+      : '—'
+    : liveServer.ping !== null
+      ? `${liveServer.ping} ms`
+      : 'timeout'
+
   return (
-    <section className="page build-page">
-      <h1>Build</h1>
+    <section className="hero">
+      <div className="hero-backdrop" />
+      <div className="hero-vignette" />
 
-      {manifestUrl && manifestError && (
-        <p className="muted note">
-          Couldn't load the content pack ({manifestError}) — showing placeholder content.
+      <div className="hero-glass">
+        <h1 className="hero-title">1.6X</h1>
+        <p className="hero-meta">
+          v{appVersion ?? '…'} · {syncLabel}
         </p>
-      )}
 
-      <div className="category-list">
-        {categories.map((category) => (
-          <CollapsibleSection
-            key={category.id}
-            title={category.label}
-            collapsed={collapsed[category.id] ?? false}
-            onToggle={() => toggleSection(category.id)}
-          >
-            <div className="item-grid">
-              {category.items.map((item) => {
-                const selected = profile.selections[category.id] === item.id
-                return (
-                  <button
-                    key={item.id}
-                    className={`item-card${selected ? ' selected' : ''}`}
-                    onClick={() => selectItem(category.id, item.id)}
-                  >
-                    <div className="item-thumb" />
-                    <span className="item-name">{item.name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </CollapsibleSection>
-        ))}
-      </div>
-
-      {!usingManifest && (
-        <p className="muted note">Content selection will apply after content-pack integration.</p>
-      )}
-
-      <h2>Features</h2>
-      <div className="feature-pills">
-        {features.map((feature) => (
+        <div className="hero-play-row">
           <button
-            key={feature.id}
-            className={`pill${profile.features[feature.id] ? ' active' : ''}`}
-            onClick={() => toggleFeature(feature.id)}
+            className={`play-button play-button-${playState}`}
+            disabled={playState === 'steam-missing' || playState === 'syncing' || playState === 'launching'}
+            onClick={handlePlay}
+            title={
+              playState === 'steam-missing'
+                ? steamFound
+                  ? "Steam is installed, but CS 1.6 isn't — install it through Steam"
+                  : "Steam wasn't found on this system"
+                : undefined
+            }
           >
-            {feature.label}
+            {playState === 'syncing' ? (
+              <>
+                <span className="play-button-fill" style={{ width: `${pct}%` }} />
+                <span className="play-button-label">
+                  {syncProgress ? `${syncProgress.completedFiles}/${syncProgress.totalFiles}` : 'Checking'}
+                </span>
+                <span className="play-button-pct">{pct}%</span>
+              </>
+            ) : (
+              <span className="play-button-label play-button-label-center">
+                {playState === 'launching' ? 'LAUNCHING…' : playState === 'update' ? 'UPDATE' : 'PLAY'}
+              </span>
+            )}
           </button>
-        ))}
+
+          {playState === 'steam-missing' && (
+            <button className="hero-fix-link" onClick={handleFixSteam}>
+              {steamFound ? 'Install CS 1.6…' : 'Locate Steam…'}
+            </button>
+          )}
+        </div>
       </div>
 
-      <CollapsibleSection
-        title="System"
-        collapsed={collapsed.system ?? true}
-        onToggle={() => toggleSection('system')}
-      >
-        {detection === 'loading' && <p className="muted">Detecting Steam…</p>}
-        {detection === 'error' && <p className="muted">Steam detection failed.</p>}
-        {detection !== 'loading' && detection !== 'error' && (
-          <dl className="detect-result">
-            <dt>Steam path</dt>
-            <dd>{detection.steamPath ?? 'not found'}</dd>
-            <dt>Game path</dt>
-            <dd>{detection.gamePath ?? 'not found'}</dd>
-            <dt>Installed</dt>
-            <dd>{detection.installed ? 'yes' : 'no'}</dd>
-          </dl>
-        )}
-      </CollapsibleSection>
-
-      <div className="play-dock">
-        {launchError && <p className="error">{launchError}</p>}
-        {syncing && (
-          <div className="sync-progress dock-progress">
-            <div className="progress-bar">
-              <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
-            </div>
-            <p className="muted">
-              {syncProgress
-                ? `Syncing ${syncProgress.completedFiles}/${syncProgress.totalFiles} — ${pct}%`
-                : 'Checking content…'}
+      <div className="quickconnect-card">
+        <p className="quickconnect-label">Last server</p>
+        {!serverView && <p className="muted">No recent connections — visit Servers to connect.</p>}
+        {serverView && (
+          <>
+            <p className="quickconnect-name">{serverView.name}</p>
+            <p className="quickconnect-meta">
+              <span>{serverView.map || '—'}</span>
+              <span className="quickconnect-dot">·</span>
+              <span>
+                {serverView.players}/{serverView.maxPlayers}
+              </span>
+              <span className="quickconnect-dot">·</span>
+              <span className={`quickconnect-ping${liveServer ? pingTone(liveServer.ping) : ''}`}>
+                {pingLabel}
+              </span>
             </p>
-          </div>
+            <button className="quickconnect-connect" disabled={connecting} onClick={handleConnectLast}>
+              {connecting ? 'Connecting…' : 'CONNECT'}
+            </button>
+          </>
         )}
-        {!syncing && dirty && <p className="muted">Changes will sync when you press Play.</p>}
-        <button className="play-button" disabled={!installed || syncing} onClick={handlePlay}>
-          {syncing ? 'SYNCING…' : 'PLAY'}
-        </button>
+      </div>
+
+      <div className="toast-stack">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className="toast toast-error"
+            onMouseEnter={() => pinToast(t.id)}
+            onMouseLeave={() => unpinToast(t.id)}
+          >
+            {t.message}
+          </div>
+        ))}
       </div>
     </section>
   )

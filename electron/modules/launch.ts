@@ -16,6 +16,18 @@ export async function playGame(): Promise<void> {
   await shell.openExternal(`steam://rungameid/${CS16_APPID}`)
 }
 
+/**
+ * The PLAY button's "Steam missing" state links out to whatever actually
+ * fixes the problem: install the game through an already-installed Steam,
+ * or send the player to get Steam itself when we couldn't find it at all.
+ */
+export async function openSteamFix(steamFound: boolean): Promise<void> {
+  const url = steamFound
+    ? `steam://install/${CS16_APPID}`
+    : 'https://store.steampowered.com/about/'
+  await shell.openExternal(url)
+}
+
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
 function isValidIPv4(ip: string): boolean {

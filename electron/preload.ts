@@ -13,8 +13,11 @@ const launcher = {
   play: (): Promise<void> => ipcRenderer.invoke('launch:play'),
   connect: (ip: string, port: number): Promise<void> =>
     ipcRenderer.invoke('launch:connect', ip, port),
+  fixSteam: (steamFound: boolean): Promise<void> => ipcRenderer.invoke('launch:fix-steam', steamFound),
   queryServers: (favorites: FavoriteServer[]): Promise<GameServer[]> =>
     ipcRenderer.invoke('servers:query', favorites),
+  queryServer: (ip: string, port: number): Promise<GameServer> =>
+    ipcRenderer.invoke('servers:query-one', ip, port),
   fetchManifest: (manifestUrl: string): Promise<ContentManifest> =>
     ipcRenderer.invoke('content:fetch-manifest', manifestUrl),
   syncContent: (manifestUrl: string, profile: BuildProfile): Promise<SyncResult> =>

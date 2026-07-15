@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Home,
   Server,
+  Boxes,
   Settings as SettingsIcon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -11,11 +12,12 @@ import {
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import { SIDEBAR_COLLAPSED_KEY, loadJSON, saveJSON } from '../lib/storage'
 
-export type Tab = 'home' | 'servers' | 'settings'
+export type Tab = 'home' | 'servers' | 'content' | 'settings'
 
 const NAV_ITEMS: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'servers', label: 'Servers', icon: Server },
+  { id: 'content', label: 'Content', icon: Boxes },
   { id: 'settings', label: 'Settings', icon: SettingsIcon }
 ]
 

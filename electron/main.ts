@@ -2,8 +2,8 @@ import { join } from 'node:path'
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { detectSteam } from './modules/steam-detect'
-import { playGame, connectToServer } from './modules/launch'
-import { queryServers, type FavoriteServer } from './modules/server-browser'
+import { playGame, connectToServer, openSteamFix } from './modules/launch'
+import { queryServers, queryServer, type FavoriteServer } from './modules/server-browser'
 import { fetchManifest, syncContent, type BuildProfile } from './modules/content-sync'
 import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
 
@@ -53,7 +53,9 @@ function registerIpc(): void {
   ipcMain.handle('steam:detect', () => detectSteam())
   ipcMain.handle('launch:play', () => playGame())
   ipcMain.handle('launch:connect', (_e, ip: string, port: number) => connectToServer(ip, port))
+  ipcMain.handle('launch:fix-steam', (_e, steamFound: boolean) => openSteamFix(steamFound))
   ipcMain.handle('servers:query', (_e, favorites: FavoriteServer[]) => queryServers(favorites))
+  ipcMain.handle('servers:query-one', (_e, ip: string, port: number) => queryServer(ip, port))
   ipcMain.handle('content:fetch-manifest', (_e, manifestUrl: string) => fetchManifest(manifestUrl))
   ipcMain.handle('content:sync', (event, manifestUrl: string, profile: BuildProfile) =>
     syncContent(manifestUrl, profile, (progress) => event.sender.send('content:progress', progress))

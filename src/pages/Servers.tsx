@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FavoriteServer, GameServer } from '../../electron/modules/server-browser'
+import { LAST_SERVER_KEY, saveJSON } from '../lib/storage'
 
 const FAVORITES_KEY = 'cs16-favorite-servers'
 
@@ -92,6 +93,14 @@ export default function Servers(): React.JSX.Element {
     setConnectError(null)
     try {
       await window.launcher.connect(server.ip, server.port)
+      saveJSON(LAST_SERVER_KEY, {
+        ip: server.ip,
+        port: server.port,
+        name: server.name,
+        map: server.map,
+        players: server.players,
+        maxPlayers: server.maxPlayers
+      })
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : String(err))
     }
