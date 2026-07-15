@@ -19,6 +19,10 @@
   "dependencies": {
     "@electron-toolkit/preload": "3.0.2",
     "@electron-toolkit/utils": "4.0.0",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/saira-condensed": "^5.2.8",
+    "lucide-react": "^1.24.0",
     "steam-server-query-goldsrc-support": "1.1.10",
     "vdf-parser": "1.2.1"
   },

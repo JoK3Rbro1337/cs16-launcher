@@ -9,11 +9,12 @@ import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './m
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 720,
-    minWidth: 880,
-    minHeight: 600,
+    width: 1280,
+    height: 800,
+    minWidth: 1024,
+    minHeight: 640,
     show: false,
+    frame: false,
     autoHideMenuBar: true,
     title: '1.6X Launcher',
     icon: join(__dirname, '../../resources/icon.png'),
@@ -31,6 +32,9 @@ function createWindow(): void {
     // event already wired in initUpdater, nothing more to do with it here.
     checkForUpdates().catch(() => {})
   })
+
+  mainWindow.on('maximize', () => mainWindow.webContents.send('window:maximized-change', true))
+  mainWindow.on('unmaximize', () => mainWindow.webContents.send('window:maximized-change', false))
 
   // Open external links (e.g. steam:// or http) in the OS, never in-app.
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -58,6 +62,23 @@ function registerIpc(): void {
   ipcMain.handle('updater:download', () => downloadUpdate())
   ipcMain.handle('updater:install', () => installUpdate())
   ipcMain.handle('app:version', () => app.getVersion())
+
+  ipcMain.handle('window:minimize', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize()
+  })
+  ipcMain.handle('window:toggle-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.handle('window:close', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close()
+  })
+  ipcMain.handle(
+    'window:is-maximized',
+    (event) => BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
+  )
 }
 
 app.whenReady().then(() => {

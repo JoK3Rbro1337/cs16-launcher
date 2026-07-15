@@ -6,6 +6,7 @@ export const MANIFEST_URL_KEY = 'cs16-manifest-url'
 export const BUILD_PROFILE_KEY = 'cs16-build-profile'
 export const SYNCED_PROFILE_KEY = 'cs16-build-profile-synced'
 export const SECTION_COLLAPSE_KEY = 'cs16-section-collapsed'
+export const SIDEBAR_COLLAPSED_KEY = 'cs16-sidebar-collapsed'
 
 export function loadJSON<T>(key: string, fallback: T): T {
   try {
