@@ -16,7 +16,12 @@
  * "Connect" hands off to launch.connectToServer.
  */
 
-import { queryGameServerInfo, queryMasterServer, REGIONS } from 'steam-server-query-goldsrc-support'
+import {
+  queryGameServerInfo,
+  queryGameServerPlayer,
+  queryMasterServer,
+  REGIONS
+} from 'steam-server-query-goldsrc-support'
 import { CS16_APPID } from './steam-detect'
 
 export interface GameServer {
@@ -28,11 +33,19 @@ export interface GameServer {
   maxPlayers: number
   /** Round-trip ping in ms, or null if unreachable. */
   ping: number | null
+  /** True if the server requires a password (A2S_INFO visibility byte). */
+  locked: boolean
 }
 
 export interface FavoriteServer {
   ip: string
   port: number
+}
+
+export interface ServerPlayer {
+  name: string
+  score: number
+  duration: number
 }
 
 /** hl1master (GoldSrc-only) was shut down by Valve; hl2master now covers CS 1.6 too. */
@@ -92,11 +105,18 @@ export async function queryServer(ip: string, port: number): Promise<GameServer>
       map: info.map,
       players: info.players,
       maxPlayers: info.maxPlayers,
-      ping: info.ping ?? null
+      ping: info.ping ?? null,
+      locked: info.visibility === 1
     }
   } catch {
-    return { ip, port, name: `${ip}:${port}`, map: '', players: 0, maxPlayers: 0, ping: null }
+    return { ip, port, name: `${ip}:${port}`, map: '', players: 0, maxPlayers: 0, ping: null, locked: false }
   }
+}
+
+/** Throws if the server doesn't answer A2S_PLAYER — callers should treat the list as best-effort. */
+export async function queryPlayers(ip: string, port: number): Promise<ServerPlayer[]> {
+  const response = await queryGameServerPlayer(`${ip}:${port}`, 1, SERVER_QUERY_TIMEOUT_MS)
+  return response.players.map((p) => ({ name: p.name, score: p.score, duration: p.duration }))
 }
 
 function byPingAscending(a: GameServer, b: GameServer): number {

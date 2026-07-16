@@ -1,8 +1,27 @@
-import { useEffect, useState } from 'react'
-import type { FavoriteServer, GameServer } from '../../electron/modules/server-browser'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Crosshair, Lock, RotateCw, Search, TriangleAlert, X } from 'lucide-react'
+import type { FavoriteServer, GameServer, ServerPlayer } from '../../electron/modules/server-browser'
 import { LAST_SERVER_KEY, saveJSON } from '../lib/storage'
 
 const FAVORITES_KEY = 'cs16-favorite-servers'
+const ROW_HEIGHT = 34
+const OVERSCAN = 8
+
+type SortKey = 'name' | 'map' | 'players' | 'ping'
+type SortDir = 'asc' | 'desc'
+
+interface Filters {
+  notFull: boolean
+  notEmpty: boolean
+  noPassword: boolean
+  favoritesOnly: boolean
+}
+
+interface ContextMenuState {
+  x: number
+  y: number
+  server: GameServer
+}
 
 function loadFavorites(): FavoriteServer[] {
   try {
@@ -31,14 +50,83 @@ function parseAddress(value: string): FavoriteServer | null {
   return { ip, port }
 }
 
+function pingTone(ping: number | null): string {
+  if (ping === null) return ''
+  if (ping < 50) return ' ping-ok'
+  if (ping <= 120) return ' ping-warn'
+  return ' ping-danger'
+}
+
+function matchesFilters(s: GameServer, filters: Filters, favKeys: Set<string>): boolean {
+  if (filters.notFull && s.maxPlayers > 0 && s.players >= s.maxPlayers) return false
+  if (filters.notEmpty && s.players <= 0) return false
+  if (filters.noPassword && s.locked) return false
+  if (filters.favoritesOnly && !favKeys.has(serverKey(s))) return false
+  return true
+}
+
+function matchesSearch(s: GameServer, query: string): boolean {
+  if (!query) return true
+  const q = query.toLowerCase()
+  return s.name.toLowerCase().includes(q) || s.map.toLowerCase().includes(q)
+}
+
+function compareServers(a: GameServer, b: GameServer, key: SortKey, dir: SortDir): number {
+  let result = 0
+  switch (key) {
+    case 'name':
+      result = a.name.localeCompare(b.name)
+      break
+    case 'map':
+      result = a.map.localeCompare(b.map)
+      break
+    case 'players':
+      result = a.players - b.players
+      break
+    case 'ping':
+      if (a.ping === null) result = b.ping === null ? 0 : 1
+      else if (b.ping === null) result = -1
+      else result = a.ping - b.ping
+      break
+  }
+  return dir === 'asc' ? result : -result
+}
+
+function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
 export default function Servers(): React.JSX.Element {
   const [favorites, setFavorites] = useState<FavoriteServer[]>(loadFavorites)
   const [servers, setServers] = useState<GameServer[]>([])
   const [addValue, setAddValue] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [firstLoad, setFirstLoad] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
+
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<Filters>({
+    notFull: false,
+    notEmpty: false,
+    noPassword: false,
+    favoritesOnly: false
+  })
+  const [sortKey, setSortKey] = useState<SortKey>('ping')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const [drawerServer, setDrawerServer] = useState<GameServer | null>(null)
+  const [players, setPlayers] = useState<ServerPlayer[] | 'loading' | 'error'>('loading')
+
+  const searchRef = useRef<HTMLInputElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
 
   async function refresh(): Promise<void> {
     setLoading(true)
@@ -49,12 +137,93 @@ export default function Servers(): React.JSX.Element {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
+      setFirstLoad(false)
     }
   }
 
   useEffect(() => {
     refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const observer = new ResizeObserver(() => setViewportHeight(el.clientHeight))
+    observer.observe(el)
+    setViewportHeight(el.clientHeight)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    function handler(e: KeyboardEvent): void {
+      if (e.key !== '/') return
+      const tag = (document.activeElement as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!menu) return
+    function close(): void {
+      setMenu(null)
+    }
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === 'Escape') setMenu(null)
+    }
+    window.addEventListener('click', close)
+    window.addEventListener('contextmenu', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('contextmenu', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [menu])
+
+  useEffect(() => {
+    if (!drawerServer) return
+    setPlayers('loading')
+    window.launcher
+      .queryPlayers(drawerServer.ip, drawerServer.port)
+      .then(setPlayers)
+      .catch(() => setPlayers('error'))
+  }, [drawerServer])
+
+  const favKeys = useMemo(() => new Set(favorites.map(serverKey)), [favorites])
+
+  const rows = useMemo(() => {
+    const filtered = servers.filter((s) => matchesFilters(s, filters, favKeys) && matchesSearch(s, search))
+    const favRows = filtered
+      .filter((s) => favKeys.has(serverKey(s)))
+      .sort((a, b) => compareServers(a, b, sortKey, sortDir))
+    const otherRows = filtered
+      .filter((s) => !favKeys.has(serverKey(s)))
+      .sort((a, b) => compareServers(a, b, sortKey, sortDir))
+    return [...favRows, ...otherRows]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers, favKeys, filters, search, sortKey, sortDir])
+
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+  const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN)
+  const visibleRows = rows.slice(startIndex, endIndex)
+
+  function toggleSort(key: SortKey): void {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  function toggleFilter(key: keyof Filters): void {
+    setFilters((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
 
   function handleAddFavorite(): void {
     const parsed = parseAddress(addValue)
@@ -73,13 +242,7 @@ export default function Servers(): React.JSX.Element {
     setAddError(null)
   }
 
-  function handleRemoveFavorite(target: FavoriteServer): void {
-    const next = favorites.filter((f) => serverKey(f) !== serverKey(target))
-    setFavorites(next)
-    saveFavorites(next)
-  }
-
-  function handleToggleFavorite(server: GameServer): void {
+  function handleToggleFavorite(server: { ip: string; port: number }): void {
     const key = serverKey(server)
     const isFavorite = favorites.some((f) => serverKey(f) === key)
     const next = isFavorite
@@ -106,104 +269,279 @@ export default function Servers(): React.JSX.Element {
     }
   }
 
-  const favoriteKeys = new Set(favorites.map(serverKey))
+  function handleCopyIp(server: GameServer): void {
+    navigator.clipboard.writeText(serverKey(server)).catch(() => {})
+  }
+
+  function openMenu(e: React.MouseEvent, server: GameServer): void {
+    e.preventDefault()
+    setSelectedKey(serverKey(server))
+    setMenu({ x: e.clientX, y: e.clientY, server })
+  }
+
+  const anyResults = rows.length > 0
+  const rawEmpty = servers.length === 0
+  const drawerFavorite = drawerServer ? favKeys.has(serverKey(drawerServer)) : false
 
   return (
-    <section className="page">
-      <h1>Servers</h1>
+    <section className="servers-page">
+      <div className="servers-toolbar">
+        <div className="servers-search">
+          <Search size={14} className="servers-search-icon" />
+          <input
+            ref={searchRef}
+            type="text"
+            className="cp-input servers-search-input"
+            placeholder="Search servers…  (press / to focus)"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
 
-      <div className="field-row">
+        <div className="filter-chips">
+          <button
+            className={`filter-chip${filters.notFull ? ' active' : ''}`}
+            onClick={() => toggleFilter('notFull')}
+          >
+            Not full
+          </button>
+          <button
+            className={`filter-chip${filters.notEmpty ? ' active' : ''}`}
+            onClick={() => toggleFilter('notEmpty')}
+          >
+            Not empty
+          </button>
+          <button
+            className={`filter-chip${filters.noPassword ? ' active' : ''}`}
+            onClick={() => toggleFilter('noPassword')}
+          >
+            No password
+          </button>
+          <button
+            className={`filter-chip${filters.favoritesOnly ? ' active' : ''}`}
+            onClick={() => toggleFilter('favoritesOnly')}
+          >
+            Favorites
+          </button>
+        </div>
+
+        <button
+          className={`refresh-btn${loading ? ' spinning' : ''}`}
+          onClick={refresh}
+          disabled={loading}
+          title="Refresh"
+        >
+          <RotateCw size={16} />
+        </button>
+      </div>
+
+      <div className="servers-add-row">
         <input
           type="text"
-          className="text-input"
-          placeholder="ip:port (e.g. 192.168.1.50:27015)"
+          className="cp-input servers-add-input"
+          placeholder="Add server by address — ip:port"
           value={addValue}
           onChange={(e) => setAddValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAddFavorite()}
         />
-        <button className="secondary" onClick={handleAddFavorite}>
+        <button className="cp-btn-secondary" onClick={handleAddFavorite}>
           Add favorite
         </button>
-        <button className="secondary" onClick={refresh} disabled={loading}>
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        {addError && <span className="cp-inline-error">{addError}</span>}
       </div>
-      {addError && <p className="error">{addError}</p>}
-      {error && <p className="error">{error}</p>}
+
       {connectError && <p className="error">{connectError}</p>}
 
-      {favorites.length === 0 && servers.length === 0 && !loading && (
-        <p className="muted">
-          No favorites yet, and no public servers responded. Add a server above, or check back —
-          the public master-server list is best-effort and not always reachable.
-        </p>
-      )}
+      <div className="server-list-header">
+        <span className="col-dot" />
+        <span className="col-star" />
+        <button className="col-sort" onClick={() => toggleSort('name')}>
+          Name{sortKey === 'name' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+        </button>
+        <button className="col-sort" onClick={() => toggleSort('map')}>
+          Map{sortKey === 'map' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+        </button>
+        <button className="col-sort col-sort-right" onClick={() => toggleSort('players')}>
+          Players{sortKey === 'players' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+        </button>
+        <button className="col-sort col-sort-right" onClick={() => toggleSort('ping')}>
+          Ping{sortKey === 'ping' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+        </button>
+        <span className="col-lock" />
+      </div>
 
-      {servers.length > 0 && (
-        <table className="server-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Name</th>
-              <th>Map</th>
-              <th>Players</th>
-              <th>Ping</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {servers.map((server) => {
+      <div className="server-list-viewport" ref={viewportRef} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
+        {firstLoad && (
+          <div className="server-list-skeleton">
+            {Array.from({ length: 10 }, (_, i) => (
+              <div key={i} className="server-row-skeleton" style={{ top: i * ROW_HEIGHT }} />
+            ))}
+          </div>
+        )}
+
+        {!firstLoad && error && (
+          <div className="server-list-message">
+            <TriangleAlert size={28} />
+            <p>{error}</p>
+            <button className="cp-btn-secondary" onClick={refresh}>
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!firstLoad && !error && !anyResults && (
+          <div className="server-list-message">
+            <Crosshair size={28} />
+            <p>{rawEmpty ? 'No servers found — add a favorite or check back' : 'No servers match these filters'}</p>
+            <button className="cp-btn-secondary" onClick={refresh}>
+              Refresh
+            </button>
+          </div>
+        )}
+
+        {!firstLoad && !error && anyResults && (
+          <div className="server-list-spacer" style={{ height: rows.length * ROW_HEIGHT }}>
+            {visibleRows.map((server, i) => {
+              const index = startIndex + i
               const key = serverKey(server)
-              const isFavorite = favoriteKeys.has(key)
+              const isFavorite = favKeys.has(key)
               const unreachable = server.ping === null
+              const selected = selectedKey === key
               return (
-                <tr key={key} className={unreachable ? 'unreachable' : ''}>
-                  <td>
-                    <button
-                      className={`star${isFavorite ? ' active' : ''}`}
-                      onClick={() => handleToggleFavorite(server)}
-                      title={isFavorite ? 'Remove favorite' : 'Add favorite'}
-                    >
-                      {isFavorite ? '★' : '☆'}
-                    </button>
-                  </td>
-                  <td>{server.name}</td>
-                  <td>{server.map}</td>
-                  <td>
+                <div
+                  key={key}
+                  className={`server-row${selected ? ' selected' : ''}${unreachable ? ' unreachable' : ''}`}
+                  style={{ top: index * ROW_HEIGHT }}
+                  tabIndex={0}
+                  onClick={() => setSelectedKey(key)}
+                  onDoubleClick={() => handleConnect(server)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleConnect(server)}
+                  onContextMenu={(e) => openMenu(e, server)}
+                >
+                  <span className={`status-dot${unreachable ? '' : ' status-dot-ok'}`} />
+                  <button
+                    className={`row-star${isFavorite ? ' active' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleToggleFavorite(server)
+                    }}
+                    title={isFavorite ? 'Remove favorite' : 'Add favorite'}
+                  >
+                    {isFavorite ? '★' : '☆'}
+                  </button>
+                  <span className="row-name">{server.name}</span>
+                  <span className="row-map">{server.map || '—'}</span>
+                  <span className="row-players">
                     {server.players}/{server.maxPlayers}
-                  </td>
-                  <td>{unreachable ? 'timeout' : `${server.ping} ms`}</td>
-                  <td>
-                    <button
-                      className="secondary"
-                      disabled={unreachable}
-                      onClick={() => handleConnect(server)}
-                    >
-                      Connect
-                    </button>
-                  </td>
-                </tr>
+                  </span>
+                  <span className={`row-ping${pingTone(server.ping)}`}>
+                    {unreachable ? 'timeout' : `${server.ping} ms`}
+                  </span>
+                  <span className="row-lock">{server.locked && <Lock size={12} />}</span>
+                </div>
               )
             })}
-          </tbody>
-        </table>
+          </div>
+        )}
+      </div>
+
+      {menu && (
+        <div className="context-menu" style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              handleConnect(menu.server)
+              setMenu(null)
+            }}
+          >
+            Connect
+          </button>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              handleCopyIp(menu.server)
+              setMenu(null)
+            }}
+          >
+            Copy IP
+          </button>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              handleToggleFavorite(menu.server)
+              setMenu(null)
+            }}
+          >
+            {favKeys.has(serverKey(menu.server)) ? 'Remove favorite' : 'Favorite'}
+          </button>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              setDrawerServer(menu.server)
+              setMenu(null)
+            }}
+          >
+            Server info
+          </button>
+        </div>
       )}
 
-      {favorites.length > 0 && (
-        <>
-          <h2>Favorites</h2>
-          <ul className="favorite-list">
-            {favorites.map((f) => (
-              <li key={serverKey(f)}>
-                <span>{serverKey(f)}</span>
-                <button className="link" onClick={() => handleRemoveFavorite(f)}>
-                  remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <div className={`server-drawer${drawerServer ? ' open' : ''}`}>
+        {drawerServer && (
+          <>
+            <div className="server-drawer-header">
+              <h2>{drawerServer.name}</h2>
+              <button className="server-drawer-close" onClick={() => setDrawerServer(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="server-drawer-thumb">
+              <span>{drawerServer.map || '—'}</span>
+            </div>
+            <dl className="server-drawer-meta">
+              <dt>Address</dt>
+              <dd>{serverKey(drawerServer)}</dd>
+              <dt>Players</dt>
+              <dd>
+                {drawerServer.players}/{drawerServer.maxPlayers}
+              </dd>
+              <dt>Ping</dt>
+              <dd className={pingTone(drawerServer.ping)}>
+                {drawerServer.ping === null ? 'timeout' : `${drawerServer.ping} ms`}
+              </dd>
+            </dl>
+            <div className="server-drawer-actions">
+              <button className="cp-btn-primary" onClick={() => handleConnect(drawerServer)}>
+                Connect
+              </button>
+              <button
+                className="cp-btn-secondary"
+                onClick={() => handleToggleFavorite(drawerServer)}
+              >
+                {drawerFavorite ? 'Remove favorite' : 'Add favorite'}
+              </button>
+            </div>
+            <h3 className="server-drawer-subhead">Players</h3>
+            {players === 'loading' && <p className="muted">Querying players…</p>}
+            {players === 'error' && <p className="muted">Player list unavailable.</p>}
+            {Array.isArray(players) && players.length === 0 && <p className="muted">No players connected.</p>}
+            {Array.isArray(players) && players.length > 0 && (
+              <ul className="server-drawer-players">
+                {players
+                  .slice()
+                  .sort((a, b) => b.score - a.score)
+                  .map((p, i) => (
+                    <li key={i}>
+                      <span className="player-name">{p.name || 'unconnected'}</span>
+                      <span className="player-score">{p.score}</span>
+                      <span className="player-duration">{formatDuration(p.duration)}</span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
     </section>
   )
 }

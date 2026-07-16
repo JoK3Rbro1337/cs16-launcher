@@ -3,7 +3,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { detectSteam } from './modules/steam-detect'
 import { playGame, connectToServer, openSteamFix } from './modules/launch'
-import { queryServers, queryServer, type FavoriteServer } from './modules/server-browser'
+import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './modules/server-browser'
 import { fetchManifest, syncContent, type BuildProfile } from './modules/content-sync'
 import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
 
@@ -56,6 +56,7 @@ function registerIpc(): void {
   ipcMain.handle('launch:fix-steam', (_e, steamFound: boolean) => openSteamFix(steamFound))
   ipcMain.handle('servers:query', (_e, favorites: FavoriteServer[]) => queryServers(favorites))
   ipcMain.handle('servers:query-one', (_e, ip: string, port: number) => queryServer(ip, port))
+  ipcMain.handle('servers:query-players', (_e, ip: string, port: number) => queryPlayers(ip, port))
   ipcMain.handle('content:fetch-manifest', (_e, manifestUrl: string) => fetchManifest(manifestUrl))
   ipcMain.handle('content:sync', (event, manifestUrl: string, profile: BuildProfile) =>
     syncContent(manifestUrl, profile, (progress) => event.sender.send('content:progress', progress))
