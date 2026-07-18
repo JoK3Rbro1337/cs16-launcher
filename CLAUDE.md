@@ -1,5 +1,7 @@
 Never run destructive or corruption test scenarios against the real CS 1.6 install. Use a temporary sandbox game directory for all sync/switching/corruption tests. The real install may only be touched by the normal user-facing sync flow.
 
+CDP monkeypatching of `window.launcher` (contextBridge objects) NEVER works — they are frozen; the patch fails silently and real IPC fires. This has now caused two incidents (M8, M10d). For UI verification of sync/launch flows, use an isolated harness with a mock bridge, never the live app against the real install.
+
 ## Project status
 
 M0-M9 are all done and pushed to origin/master. Launcher v0.1.0 is released (win+linux artifacts via GitHub Actions on tag push). v0.2.0 is pending: README, version bump, and tag. content-v1 is published with 5 theme packs.

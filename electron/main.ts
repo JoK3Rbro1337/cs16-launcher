@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { detectSteam } from './modules/steam-detect'
+import { BACKUP_DIRNAME } from './modules/content-sync'
 import { playGame, connectToServer, openSteamFix } from './modules/launch'
 import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './modules/server-browser'
 import { fetchManifest, syncContent, type BuildProfile } from './modules/content-sync'
@@ -65,6 +66,17 @@ function registerIpc(): void {
   ipcMain.handle('updater:download', () => downloadUpdate())
   ipcMain.handle('updater:install', () => installUpdate())
   ipcMain.handle('app:version', () => app.getVersion())
+
+  ipcMain.handle('shell:open-game-folder', async () => {
+    const detection = await detectSteam()
+    if (!detection.gamePath) throw new Error('CS 1.6 install not found')
+    await shell.openPath(detection.gamePath)
+  })
+  ipcMain.handle('shell:open-backup-folder', async () => {
+    const detection = await detectSteam()
+    if (!detection.gamePath) throw new Error('CS 1.6 install not found')
+    await shell.openPath(join(detection.gamePath, BACKUP_DIRNAME))
+  })
 
   ipcMain.handle('window:minimize', (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize()

@@ -8,6 +8,8 @@ export const SYNCED_PROFILE_KEY = 'cs16-build-profile-synced'
 export const SECTION_COLLAPSE_KEY = 'cs16-section-collapsed'
 export const SIDEBAR_COLLAPSED_KEY = 'cs16-sidebar-collapsed'
 export const LAST_SERVER_KEY = 'cs16-last-server'
+export const REDUCE_MOTION_KEY = 'cs16-reduce-motion'
+export const FAVORITES_KEY = 'cs16-favorite-servers'
 
 export function loadJSON<T>(key: string, fallback: T): T {
   try {
@@ -20,4 +22,14 @@ export function loadJSON<T>(key: string, fallback: T): T {
 
 export function saveJSON(key: string, value: unknown): void {
   localStorage.setItem(key, JSON.stringify(value))
+}
+
+export function getReduceMotion(): boolean {
+  return loadJSON(REDUCE_MOTION_KEY, false)
+}
+
+/** Also flips :root.reduce-motion, which the CSS reduced-motion overrides key off alongside prefers-reduced-motion. */
+export function setReduceMotion(value: boolean): void {
+  saveJSON(REDUCE_MOTION_KEY, value)
+  document.documentElement.classList.toggle('reduce-motion', value)
 }

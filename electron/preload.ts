@@ -31,6 +31,8 @@ const launcher = {
     return () => ipcRenderer.removeListener('content:progress', listener)
   },
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  openGameFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-game-folder'),
+  openBackupFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-backup-folder'),
   checkForUpdates: (): Promise<void> => ipcRenderer.invoke('updater:check'),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke('updater:download'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('updater:install'),

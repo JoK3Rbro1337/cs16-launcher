@@ -135,12 +135,21 @@ export interface BuildProfile {
   features: Record<string, boolean>
 }
 
+export interface SyncProgressItem {
+  path: string
+  size: number
+  downloadedBytes: number
+  status: 'pending' | 'downloading' | 'done'
+}
+
 export interface SyncProgress {
   totalFiles: number
   completedFiles: number
   totalBytes: number
   downloadedBytes: number
   currentFile: string | null
+  /** Per-file detail for the sync screen's item rows — active item(s) first. */
+  items: SyncProgressItem[]
 }
 
 export interface SyncResult {
@@ -163,7 +172,7 @@ interface StateFile {
 }
 
 const STATE_FILENAME = '.16x-launcher-state.json'
-const BACKUP_DIRNAME = '.16x-launcher-backups'
+export const BACKUP_DIRNAME = '.16x-launcher-backups'
 const CONCURRENCY = 4
 
 const AUTOEXEC_PATH = 'cstrike/autoexec.cfg'
@@ -483,30 +492,43 @@ export async function syncContent(
     }
   })
 
+  const items: SyncProgressItem[] = toDownload.map(({ path, file }) => ({
+    path,
+    size: file.size,
+    downloadedBytes: 0,
+    status: 'pending'
+  }))
+  const itemByPath = new Map(items.map((item) => [item.path, item]))
+
   const progress: SyncProgress = {
     totalFiles: toDownload.length,
     completedFiles: 0,
     totalBytes: toDownload.reduce((sum, d) => sum + d.file.size, 0),
     downloadedBytes: 0,
-    currentFile: null
+    currentFile: null,
+    items
   }
-  onProgress({ ...progress })
+  onProgress({ ...progress, items: [...items] })
 
   await runPool(toDownload, CONCURRENCY, async ({ path, file, owner }) => {
     const destPath = resolveContentPath(contentDir, path)
     await backupIfNeeded(contentDir, path, destPath)
+    const item = itemByPath.get(path)!
+    item.status = 'downloading'
     progress.currentFile = path
-    onProgress({ ...progress })
+    onProgress({ ...progress, items: [...items] })
 
     await downloadFile(file, destPath, (n) => {
       progress.downloadedBytes += n
-      onProgress({ ...progress })
+      item.downloadedBytes += n
+      onProgress({ ...progress, items: [...items] })
     })
 
+    item.status = 'done'
     state.files[path] = { sha256: file.sha256, owner }
     progress.completedFiles++
     progress.currentFile = null
-    onProgress({ ...progress })
+    onProgress({ ...progress, items: [...items] })
   })
 
   const execPaths = [...desired.values()]

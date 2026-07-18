@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Crosshair, Lock, RotateCw, Search, TriangleAlert, X } from 'lucide-react'
 import type { FavoriteServer, GameServer, ServerPlayer } from '../../electron/modules/server-browser'
-import { LAST_SERVER_KEY, saveJSON } from '../lib/storage'
+import { FAVORITES_KEY, LAST_SERVER_KEY, saveJSON } from '../lib/storage'
+import { useToast } from '../lib/toast'
+import { setKnownServers } from '../lib/serverListStore'
 
-const FAVORITES_KEY = 'cs16-favorite-servers'
 const ROW_HEIGHT = 34
 const OVERSCAN = 8
 
@@ -107,7 +108,7 @@ export default function Servers(): React.JSX.Element {
   const [loading, setLoading] = useState(false)
   const [firstLoad, setFirstLoad] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [connectError, setConnectError] = useState<string | null>(null)
+  const { pushToast } = useToast()
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filters>({
@@ -132,7 +133,9 @@ export default function Servers(): React.JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      setServers(await window.launcher.queryServers(favorites))
+      const result = await window.launcher.queryServers(favorites)
+      setServers(result)
+      setKnownServers(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -253,7 +256,6 @@ export default function Servers(): React.JSX.Element {
   }
 
   async function handleConnect(server: GameServer): Promise<void> {
-    setConnectError(null)
     try {
       await window.launcher.connect(server.ip, server.port)
       saveJSON(LAST_SERVER_KEY, {
@@ -265,7 +267,7 @@ export default function Servers(): React.JSX.Element {
         maxPlayers: server.maxPlayers
       })
     } catch (err) {
-      setConnectError(err instanceof Error ? err.message : String(err))
+      pushToast(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -349,8 +351,6 @@ export default function Servers(): React.JSX.Element {
         </button>
         {addError && <span className="cp-inline-error">{addError}</span>}
       </div>
-
-      {connectError && <p className="error">{connectError}</p>}
 
       <div className="server-list-header">
         <span className="col-dot" />

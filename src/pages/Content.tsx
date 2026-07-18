@@ -223,9 +223,7 @@ export default function Content(): React.JSX.Element {
       <h1>Content</h1>
 
       {manifestUrl && manifestError && (
-        <p className="muted note">
-          Couldn't load the content pack ({manifestError}) — showing placeholder content.
-        </p>
+        <p className="note">Couldn't load the content pack ({manifestError}) — showing placeholder content.</p>
       )}
 
       <div className="category-list">
@@ -255,16 +253,14 @@ export default function Content(): React.JSX.Element {
         ))}
       </div>
 
-      {!usingManifest && (
-        <p className="muted note">Content selection will apply after content-pack integration.</p>
-      )}
+      {!usingManifest && <p className="note">Content selection will apply after content-pack integration.</p>}
 
       <h2>Features</h2>
-      <div className="feature-pills">
+      <div className="filter-chips content-features">
         {features.map((feature) => (
           <button
             key={feature.id}
-            className={`pill${profile.features[feature.id] ? ' active' : ''}`}
+            className={`filter-chip${profile.features[feature.id] ? ' active' : ''}`}
             onClick={() => toggleFeature(feature.id)}
           >
             {feature.label}

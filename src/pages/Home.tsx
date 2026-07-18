@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import type { BuildProfile, SyncProgress } from '../../electron/modules/content-sync'
 import type { GameServer } from '../../electron/modules/server-browser'
@@ -9,13 +9,9 @@ import {
   SYNCED_PROFILE_KEY,
   loadJSON
 } from '../lib/storage'
+import { useToast } from '../lib/toast'
 
 type PlayState = 'steam-missing' | 'update' | 'syncing' | 'launching' | 'idle'
-
-interface Toast {
-  id: number
-  message: string
-}
 
 interface LastServer {
   ip: string
@@ -54,8 +50,7 @@ export default function Home(): React.JSX.Element {
   const [liveServer, setLiveServer] = useState<GameServer | null>(null)
   const [connecting, setConnecting] = useState(false)
 
-  const [toasts, setToasts] = useState<Toast[]>([])
-  const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+  const { pushToast } = useToast()
 
   useEffect(() => {
     window.launcher
@@ -79,34 +74,6 @@ export default function Home(): React.JSX.Element {
       .then(setLiveServer)
       .catch(() => setLiveServer(null))
   }, [lastServer])
-
-  function dismissToast(id: number): void {
-    const timer = toastTimers.current.get(id)
-    if (timer) clearTimeout(timer)
-    toastTimers.current.delete(id)
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }
-
-  function pushToast(message: string): void {
-    const id = Date.now() + Math.random()
-    setToasts((prev) => [...prev.slice(-2), { id, message }])
-    toastTimers.current.set(
-      id,
-      setTimeout(() => dismissToast(id), 4000)
-    )
-  }
-
-  function pinToast(id: number): void {
-    const timer = toastTimers.current.get(id)
-    if (timer) clearTimeout(timer)
-  }
-
-  function unpinToast(id: number): void {
-    toastTimers.current.set(
-      id,
-      setTimeout(() => dismissToast(id), 4000)
-    )
-  }
 
   const installed = detection !== 'loading' && detection !== 'error' && detection.installed
   const steamFound = detection !== 'loading' && detection !== 'error' && detection.steamPath !== null
@@ -260,19 +227,6 @@ export default function Home(): React.JSX.Element {
             </button>
           </>
         )}
-      </div>
-
-      <div className="toast-stack">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="toast toast-error"
-            onMouseEnter={() => pinToast(t.id)}
-            onMouseLeave={() => unpinToast(t.id)}
-          >
-            {t.message}
-          </div>
-        ))}
       </div>
     </section>
   )
