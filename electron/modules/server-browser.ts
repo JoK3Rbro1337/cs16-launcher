@@ -80,17 +80,20 @@ export function parseHostPort(hostPort: string): FavoriteServer | null {
 async function discoverMasterHosts(): Promise<string[]> {
   for (const master of MASTER_SERVERS) {
     try {
-      return await queryMasterServer(
+      const hosts = await queryMasterServer(
         master,
         REGIONS.ALL,
         { appid: Number(CS16_APPID) },
         MASTER_QUERY_TIMEOUT_MS,
         MAX_MASTER_HOSTS
       )
+      console.log(`[server-browser] master ${master}: ${hosts.length} hosts`)
+      return hosts
     } catch {
       continue
     }
   }
+  console.log('[server-browser] master discovery: all masters failed, 0 hosts')
   return []
 }
 
@@ -125,13 +128,25 @@ function byPingAscending(a: GameServer, b: GameServer): number {
   return a.ping - b.ping
 }
 
+export interface QueryServersResult {
+  servers: GameServer[]
+  /** Raw host count master discovery returned, before dedup against the seed. */
+  masterDiscoveredCount: number
+  /** Of those, how many weren't already covered by the seed and were actually queried. */
+  masterNewCount: number
+  /** Total unique addresses actually A2S-queried (seed + masterNewCount). */
+  queriedCount: number
+  /** servers with ping !== null. */
+  respondingCount: number
+}
+
 /**
  * `seedAddresses` is whatever the caller wants queried unconditionally —
  * favorites, plus (as of M11) addresses merged in from user subscriptions
  * and the optional built-in BattleMetrics source. Master-server discovery
  * still runs here and only contributes hosts not already in the seed.
  */
-export async function queryServers(seedAddresses: FavoriteServer[]): Promise<GameServer[]> {
+export async function queryServers(seedAddresses: FavoriteServer[]): Promise<QueryServersResult> {
   const masterHosts = await discoverMasterHosts()
 
   const seedKeys = new Set(seedAddresses.map((f) => `${f.ip}:${f.port}`))
@@ -141,5 +156,18 @@ export async function queryServers(seedAddresses: FavoriteServer[]): Promise<Gam
 
   const targets = [...seedAddresses, ...masterTargets]
   const results = await mapPool(targets, QUERY_CONCURRENCY, (t) => queryServer(t.ip, t.port))
-  return results.sort(byPingAscending)
+  const servers = results.sort(byPingAscending)
+  const respondingCount = servers.filter((s) => s.ping !== null).length
+
+  console.log(
+    `[server-browser] queried ${targets.length} addresses (${masterTargets.length} new from master), ${respondingCount} responding`
+  )
+
+  return {
+    servers,
+    masterDiscoveredCount: masterHosts.length,
+    masterNewCount: masterTargets.length,
+    queriedCount: targets.length,
+    respondingCount
+  }
 }

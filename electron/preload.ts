@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
-import type { FavoriteServer, GameServer, ServerPlayer } from './modules/server-browser'
+import type { FavoriteServer, GameServer, QueryServersResult, ServerPlayer } from './modules/server-browser'
 import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sources'
 import type { BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
 import type { UpdateStatus } from './modules/updater'
@@ -15,7 +15,7 @@ const launcher = {
   connect: (ip: string, port: number): Promise<void> =>
     ipcRenderer.invoke('launch:connect', ip, port),
   fixSteam: (steamFound: boolean): Promise<void> => ipcRenderer.invoke('launch:fix-steam', steamFound),
-  queryServers: (favorites: FavoriteServer[]): Promise<GameServer[]> =>
+  queryServers: (favorites: FavoriteServer[]): Promise<QueryServersResult> =>
     ipcRenderer.invoke('servers:query', favorites),
   queryServer: (ip: string, port: number): Promise<GameServer> =>
     ipcRenderer.invoke('servers:query-one', ip, port),

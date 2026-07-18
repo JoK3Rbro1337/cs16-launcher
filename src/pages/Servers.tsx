@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Crosshair, LayoutGrid, List, Lock, RotateCw, Search, TriangleAlert, X } from 'lucide-react'
+import { Crosshair, Info, LayoutGrid, List, Lock, RotateCw, Search, TriangleAlert, X } from 'lucide-react'
 import type { FavoriteServer, GameServer, ServerPlayer } from '../../electron/modules/server-browser'
 import { FAVORITES_KEY, LAST_SERVER_KEY, SERVER_VIEW_KEY, saveJSON } from '../lib/storage'
 import { useToast } from '../lib/toast'
@@ -24,12 +24,19 @@ interface Filters {
   notEmpty: boolean
   noPassword: boolean
   favoritesOnly: boolean
+  showUnresponsive: boolean
 }
 
 interface ContextMenuState {
   x: number
   y: number
   server: GameServer
+}
+
+interface FunnelSummary {
+  sources: number
+  addresses: number
+  responding: number
 }
 
 function loadFavorites(): FavoriteServer[] {
@@ -79,6 +86,7 @@ function matchesFilters(s: GameServer, filters: Filters, favKeys: Set<string>): 
   if (filters.notEmpty && s.players <= 0) return false
   if (filters.noPassword && s.locked) return false
   if (filters.favoritesOnly && !favKeys.has(serverKey(s))) return false
+  if (!filters.showUnresponsive && s.ping === null) return false
   return true
 }
 
@@ -131,7 +139,8 @@ export default function Servers(): React.JSX.Element {
     notFull: false,
     notEmpty: false,
     noPassword: false,
-    favoritesOnly: false
+    favoritesOnly: false,
+    showUnresponsive: false
   })
   const [mapFilter, setMapFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('ping')
@@ -141,6 +150,8 @@ export default function Servers(): React.JSX.Element {
   const [drawerServer, setDrawerServer] = useState<GameServer | null>(null)
   const [players, setPlayers] = useState<ServerPlayer[] | 'loading' | 'error'>('loading')
   const [view, setView] = useState<ServerView>(loadView)
+  const [funnel, setFunnel] = useState<FunnelSummary | null>(null)
+  const [retryingKeys, setRetryingKeys] = useState<Set<string>>(new Set())
 
   const searchRef = useRef<HTMLInputElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -159,14 +170,57 @@ export default function Servers(): React.JSX.Element {
       }
       const seed = dedupeAddresses([favorites, ...sourceResults.map((s) => s.addresses)])
       const result = await window.launcher.queryServers(seed)
-      setServers(result)
-      setKnownServers(result)
+      setServers(result.servers)
+      setKnownServers(result.servers)
+
+      // Diagnostic funnel (M11 follow-up): per-source contribution -> dedup -> A2S response, so a
+      // "why does the list feel short" report has real numbers to point at instead of guesswork.
+      const subscriptionCounts: Record<string, number> = {}
+      let battlemetricsCount = 0
+      for (const source of sourceResults) {
+        if (source.kind === 'battlemetrics') battlemetricsCount = source.addresses.length
+        else subscriptionCounts[source.id] = source.addresses.length
+      }
+      console.log('[servers] refresh funnel', {
+        favorites: favorites.length,
+        battlemetrics: battlemetricsCount,
+        subscriptions: subscriptionCounts,
+        master: { discovered: result.masterDiscoveredCount, new: result.masterNewCount },
+        dedupedSeed: seed.length,
+        totalQueried: result.queriedCount,
+        responding: result.respondingCount
+      })
+      setFunnel({
+        sources: 1 /* master */ + specs.length,
+        addresses: result.queriedCount,
+        responding: result.respondingCount
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
       setFirstLoad(false)
     }
+  }
+
+  async function handleRetry(server: GameServer): Promise<void> {
+    const key = serverKey(server)
+    setRetryingKeys((prev) => new Set(prev).add(key))
+    try {
+      const updated = await window.launcher.queryServer(server.ip, server.port)
+      setServers((prev) => prev.map((s) => (serverKey(s) === key ? updated : s)))
+    } finally {
+      setRetryingKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
+  }
+
+  function openDrawer(server: GameServer): void {
+    setSelectedKey(serverKey(server))
+    setDrawerServer(server)
   }
 
   useEffect(() => {
@@ -376,6 +430,12 @@ export default function Servers(): React.JSX.Element {
           >
             Favorites
           </button>
+          <button
+            className={`filter-chip${filters.showUnresponsive ? ' active' : ''}`}
+            onClick={() => toggleFilter('showUnresponsive')}
+          >
+            Show unresponsive
+          </button>
           <select
             className={`filter-chip filter-chip-select${mapFilter ? ' active' : ''}`}
             value={mapFilter}
@@ -418,6 +478,16 @@ export default function Servers(): React.JSX.Element {
         </button>
       </div>
 
+      {funnel && (
+        <div className="servers-funnel">
+          <span className="servers-funnel-num">{funnel.sources}</span> source{funnel.sources === 1 ? '' : 's'}
+          {' · '}
+          <span className="servers-funnel-num">{funnel.addresses}</span> address{funnel.addresses === 1 ? '' : 'es'}
+          {' · '}
+          <span className="servers-funnel-num">{funnel.responding}</span> responding
+        </div>
+      )}
+
       <div className="servers-add-row">
         <input
           type="text"
@@ -450,6 +520,7 @@ export default function Servers(): React.JSX.Element {
             Ping{sortKey === 'ping' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
           </button>
           <span className="col-lock" />
+          <span className="col-info" />
         </div>
       )}
 
@@ -537,9 +608,32 @@ export default function Servers(): React.JSX.Element {
                     {server.players}/{server.maxPlayers}
                   </span>
                   <span className={`row-ping${pingTone(server.ping)}`}>
-                    {unreachable ? 'timeout' : `${server.ping} ms`}
+                    {unreachable ? (
+                      <button
+                        className="row-retry"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRetry(server)
+                        }}
+                        disabled={retryingKeys.has(key)}
+                      >
+                        {retryingKeys.has(key) ? '…' : 'Retry'}
+                      </button>
+                    ) : (
+                      `${server.ping} ms`
+                    )}
                   </span>
                   <span className="row-lock">{server.locked && <Lock size={12} />}</span>
+                  <button
+                    className="row-info"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openDrawer(server)
+                    }}
+                    title="Server info"
+                  >
+                    <Info size={13} />
+                  </button>
                 </div>
               )
             })}
@@ -567,8 +661,24 @@ export default function Servers(): React.JSX.Element {
                   onKeyDown={(e) => e.key === 'Enter' && handleConnect(server)}
                   onContextMenu={(e) => openMenu(e, server)}
                 >
-                  <div className="server-card-thumb">
+                  <div
+                    className="server-card-thumb"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openDrawer(server)
+                    }}
+                  >
                     <MapThumb map={server.map} />
+                    <button
+                      className="server-card-info"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openDrawer(server)
+                      }}
+                      title="Server info"
+                    >
+                      <Info size={12} />
+                    </button>
                     <button
                       className={`server-card-star${isFavorite ? ' active' : ''}`}
                       onClick={(e) => {
@@ -594,7 +704,20 @@ export default function Servers(): React.JSX.Element {
                       </span>
                       <span className={`server-card-ping${pingTone(server.ping)}`}>
                         <span className={`status-dot${unreachable ? '' : ' status-dot-ok'}`} />
-                        {unreachable ? 'timeout' : `${server.ping} ms`}
+                        {unreachable ? (
+                          <button
+                            className="server-card-retry"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRetry(server)
+                            }}
+                            disabled={retryingKeys.has(key)}
+                          >
+                            {retryingKeys.has(key) ? '…' : 'Retry'}
+                          </button>
+                        ) : (
+                          `${server.ping} ms`
+                        )}
                       </span>
                     </div>
                     <button
@@ -646,7 +769,7 @@ export default function Servers(): React.JSX.Element {
           <button
             className="context-menu-item"
             onClick={() => {
-              setDrawerServer(menu.server)
+              openDrawer(menu.server)
               setMenu(null)
             }}
           >

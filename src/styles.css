@@ -750,7 +750,7 @@ body {
 /* ---------------------------------------------------------------------- */
 
 .servers-page {
-  --server-row-grid: 24px 24px minmax(140px, 1fr) 140px 90px 90px 24px;
+  --server-row-grid: 24px 24px minmax(140px, 1fr) 140px 90px 90px 24px 24px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -915,6 +915,18 @@ body {
 
 :root.reduce-motion .refresh-btn.spinning svg {
   animation: none;
+}
+
+.servers-funnel {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--cs-text-low);
+}
+
+.servers-funnel-num {
+  font-family: var(--font-mono);
+  color: var(--cs-text-mid);
 }
 
 .servers-add-row {
@@ -1148,6 +1160,49 @@ body {
   color: var(--cs-text-low);
 }
 
+.row-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--cs-text-low);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.server-row:hover .row-info,
+.server-row:focus-visible .row-info,
+.server-row.selected .row-info {
+  opacity: 1;
+}
+
+.row-info:hover {
+  color: var(--cs-text-hi);
+  background: var(--cs-bg-3);
+}
+
+.row-retry {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--cs-info);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.row-retry:hover:not(:disabled) {
+  color: var(--cs-text-hi);
+}
+
+.row-retry:disabled {
+  color: var(--cs-text-low);
+  cursor: default;
+}
+
 .server-list-skeleton {
   position: relative;
 }
@@ -1274,6 +1329,35 @@ body {
   position: relative;
   height: 108px;
   flex-shrink: 0;
+  cursor: pointer;
+}
+
+.server-card-info {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: rgba(13, 16, 14, 0.55);
+  color: var(--cs-text-hi);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.server-card:hover .server-card-info,
+.server-card:focus-visible .server-card-info,
+.server-card.selected .server-card-info {
+  opacity: 1;
+}
+
+.server-card-info:hover {
+  color: var(--cs-accent);
 }
 
 .server-card-star {
@@ -1380,6 +1464,25 @@ body {
 
 .server-card-ping.ping-danger {
   color: var(--cs-danger);
+}
+
+.server-card-retry {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--cs-info);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.server-card-retry:hover:not(:disabled) {
+  color: var(--cs-text-hi);
+}
+
+.server-card-retry:disabled {
+  color: var(--cs-text-low);
+  cursor: default;
 }
 
 .server-card-connect {
