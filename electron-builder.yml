@@ -17,6 +17,7 @@ publish:
   provider: github
   owner: JoK3Rbro1337
   repo: cs16-launcher
+  draft: false
 win:
   target:
     - nsis
