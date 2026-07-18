@@ -10,6 +10,9 @@ export const SIDEBAR_COLLAPSED_KEY = 'cs16-sidebar-collapsed'
 export const LAST_SERVER_KEY = 'cs16-last-server'
 export const REDUCE_MOTION_KEY = 'cs16-reduce-motion'
 export const FAVORITES_KEY = 'cs16-favorite-servers'
+export const SERVER_SOURCES_KEY = 'cs16-server-sources'
+export const BATTLEMETRICS_ENABLED_KEY = 'cs16-battlemetrics-enabled'
+export const SERVER_VIEW_KEY = 'cs16-server-view'
 
 export function loadJSON<T>(key: string, fallback: T): T {
   try {

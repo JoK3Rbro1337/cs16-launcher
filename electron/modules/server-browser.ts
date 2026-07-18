@@ -68,7 +68,7 @@ async function mapPool<T, R>(items: T[], limit: number, worker: (item: T) => Pro
   return results
 }
 
-function parseHostPort(hostPort: string): FavoriteServer | null {
+export function parseHostPort(hostPort: string): FavoriteServer | null {
   const idx = hostPort.lastIndexOf(':')
   if (idx === -1) return null
   const port = Number(hostPort.slice(idx + 1))
@@ -125,15 +125,21 @@ function byPingAscending(a: GameServer, b: GameServer): number {
   return a.ping - b.ping
 }
 
-export async function queryServers(favorites: FavoriteServer[]): Promise<GameServer[]> {
+/**
+ * `seedAddresses` is whatever the caller wants queried unconditionally —
+ * favorites, plus (as of M11) addresses merged in from user subscriptions
+ * and the optional built-in BattleMetrics source. Master-server discovery
+ * still runs here and only contributes hosts not already in the seed.
+ */
+export async function queryServers(seedAddresses: FavoriteServer[]): Promise<GameServer[]> {
   const masterHosts = await discoverMasterHosts()
 
-  const favoriteKeys = new Set(favorites.map((f) => `${f.ip}:${f.port}`))
+  const seedKeys = new Set(seedAddresses.map((f) => `${f.ip}:${f.port}`))
   const masterTargets = masterHosts
     .map(parseHostPort)
-    .filter((t): t is FavoriteServer => t !== null && !favoriteKeys.has(`${t.ip}:${t.port}`))
+    .filter((t): t is FavoriteServer => t !== null && !seedKeys.has(`${t.ip}:${t.port}`))
 
-  const targets = [...favorites, ...masterTargets]
+  const targets = [...seedAddresses, ...masterTargets]
   const results = await mapPool(targets, QUERY_CONCURRENCY, (t) => queryServer(t.ip, t.port))
   return results.sort(byPingAscending)
 }

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
 import type { FavoriteServer, GameServer, ServerPlayer } from './modules/server-browser'
+import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sources'
 import type { BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
 import type { UpdateStatus } from './modules/updater'
 
@@ -20,6 +21,10 @@ const launcher = {
     ipcRenderer.invoke('servers:query-one', ip, port),
   queryPlayers: (ip: string, port: number): Promise<ServerPlayer[]> =>
     ipcRenderer.invoke('servers:query-players', ip, port),
+  fetchServerSources: (specs: ServerSourceSpec[]): Promise<ServerSourceResult[]> =>
+    ipcRenderer.invoke('servers:fetch-sources', specs),
+  getMapThumbnail: (mapName: string): Promise<string | null> =>
+    ipcRenderer.invoke('servers:map-thumbnail', mapName),
   fetchManifest: (manifestUrl: string): Promise<ContentManifest> =>
     ipcRenderer.invoke('content:fetch-manifest', manifestUrl),
   syncContent: (manifestUrl: string, profile: BuildProfile): Promise<SyncResult> =>

@@ -14,7 +14,8 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "build:linux": "electron-vite build && electron-builder --linux",
     "build:win": "electron-vite build && electron-builder --win",
-    "manifest:generate": "node scripts/generate-manifest.mjs"
+    "manifest:generate": "node scripts/generate-manifest.mjs",
+    "maps:generate": "node scripts/generate-map-thumbnails.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "3.0.2",

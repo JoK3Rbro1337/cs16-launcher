@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Crosshair, Lock, RotateCw, Search, TriangleAlert, X } from 'lucide-react'
+import { Crosshair, LayoutGrid, List, Lock, RotateCw, Search, TriangleAlert, X } from 'lucide-react'
 import type { FavoriteServer, GameServer, ServerPlayer } from '../../electron/modules/server-browser'
-import { FAVORITES_KEY, LAST_SERVER_KEY, saveJSON } from '../lib/storage'
+import { FAVORITES_KEY, LAST_SERVER_KEY, SERVER_VIEW_KEY, saveJSON } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { setKnownServers } from '../lib/serverListStore'
+import { currentSourceSpecs, dedupeAddresses } from '../lib/serverSources'
+import MapThumb from '../components/MapThumb'
 
 const ROW_HEIGHT = 34
 const OVERSCAN = 8
 
+const CARD_WIDTH = 236
+const CARD_HEIGHT = 196
+const CARD_GAP = 12
+const GRID_ROW_OVERSCAN = 2
+
 type SortKey = 'name' | 'map' | 'players' | 'ping'
 type SortDir = 'asc' | 'desc'
+type ServerView = 'list' | 'grid'
 
 interface Filters {
   notFull: boolean
@@ -35,6 +43,14 @@ function loadFavorites(): FavoriteServer[] {
 
 function saveFavorites(favorites: FavoriteServer[]): void {
   localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites))
+}
+
+function loadView(): ServerView {
+  return localStorage.getItem(SERVER_VIEW_KEY) === 'grid' ? 'grid' : 'list'
+}
+
+function saveView(view: ServerView): void {
+  localStorage.setItem(SERVER_VIEW_KEY, view)
 }
 
 function serverKey(s: { ip: string; port: number }): string {
@@ -117,23 +133,32 @@ export default function Servers(): React.JSX.Element {
     noPassword: false,
     favoritesOnly: false
   })
+  const [mapFilter, setMapFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('ping')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [drawerServer, setDrawerServer] = useState<GameServer | null>(null)
   const [players, setPlayers] = useState<ServerPlayer[] | 'loading' | 'error'>('loading')
+  const [view, setView] = useState<ServerView>(loadView)
 
   const searchRef = useRef<HTMLInputElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
+  const [viewportWidth, setViewportWidth] = useState(0)
 
   async function refresh(): Promise<void> {
     setLoading(true)
     setError(null)
     try {
-      const result = await window.launcher.queryServers(favorites)
+      const specs = currentSourceSpecs()
+      const sourceResults = specs.length > 0 ? await window.launcher.fetchServerSources(specs) : []
+      for (const source of sourceResults) {
+        if (source.error) pushToast(`Server source "${source.id}" failed: ${source.error}`)
+      }
+      const seed = dedupeAddresses([favorites, ...sourceResults.map((s) => s.addresses)])
+      const result = await window.launcher.queryServers(seed)
       setServers(result)
       setKnownServers(result)
     } catch (err) {
@@ -152,11 +177,20 @@ export default function Servers(): React.JSX.Element {
   useEffect(() => {
     const el = viewportRef.current
     if (!el) return
-    const observer = new ResizeObserver(() => setViewportHeight(el.clientHeight))
+    const observer = new ResizeObserver(() => {
+      setViewportHeight(el.clientHeight)
+      setViewportWidth(el.clientWidth)
+    })
     observer.observe(el)
     setViewportHeight(el.clientHeight)
+    setViewportWidth(el.clientWidth)
     return () => observer.disconnect()
   }, [])
+
+  function handleViewChange(next: ServerView): void {
+    setView(next)
+    saveView(next)
+  }
 
   useEffect(() => {
     function handler(e: KeyboardEvent): void {
@@ -199,8 +233,16 @@ export default function Servers(): React.JSX.Element {
 
   const favKeys = useMemo(() => new Set(favorites.map(serverKey)), [favorites])
 
+  const mapOptions = useMemo(() => {
+    const set = new Set(servers.map((s) => s.map).filter((m) => m))
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [servers])
+
   const rows = useMemo(() => {
-    const filtered = servers.filter((s) => matchesFilters(s, filters, favKeys) && matchesSearch(s, search))
+    const filtered = servers.filter(
+      (s) =>
+        matchesFilters(s, filters, favKeys) && matchesSearch(s, search) && (!mapFilter || s.map === mapFilter)
+    )
     const favRows = filtered
       .filter((s) => favKeys.has(serverKey(s)))
       .sort((a, b) => compareServers(a, b, sortKey, sortDir))
@@ -209,11 +251,20 @@ export default function Servers(): React.JSX.Element {
       .sort((a, b) => compareServers(a, b, sortKey, sortDir))
     return [...favRows, ...otherRows]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servers, favKeys, filters, search, sortKey, sortDir])
+  }, [servers, favKeys, filters, search, mapFilter, sortKey, sortDir])
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
   const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN)
   const visibleRows = rows.slice(startIndex, endIndex)
+
+  const columnCount = Math.max(1, Math.floor((viewportWidth + CARD_GAP) / (CARD_WIDTH + CARD_GAP)))
+  const totalGridRows = Math.ceil(rows.length / columnCount)
+  const gridRowHeight = CARD_HEIGHT + CARD_GAP
+  const startGridRow = Math.max(0, Math.floor(scrollTop / gridRowHeight) - GRID_ROW_OVERSCAN)
+  const endGridRow = Math.min(totalGridRows, Math.ceil((scrollTop + viewportHeight) / gridRowHeight) + GRID_ROW_OVERSCAN)
+  const gridStartIndex = startGridRow * columnCount
+  const gridEndIndex = Math.min(rows.length, endGridRow * columnCount)
+  const visibleCards = rows.slice(gridStartIndex, gridEndIndex)
 
   function toggleSort(key: SortKey): void {
     if (sortKey === key) {
@@ -325,6 +376,36 @@ export default function Servers(): React.JSX.Element {
           >
             Favorites
           </button>
+          <select
+            className={`filter-chip filter-chip-select${mapFilter ? ' active' : ''}`}
+            value={mapFilter}
+            onChange={(e) => setMapFilter(e.target.value)}
+            disabled={mapOptions.length === 0}
+          >
+            <option value="">All maps</option>
+            {mapOptions.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="view-toggle" role="group" aria-label="View">
+          <button
+            className={`view-toggle-btn${view === 'list' ? ' active' : ''}`}
+            onClick={() => handleViewChange('list')}
+            title="List view"
+          >
+            <List size={14} />
+          </button>
+          <button
+            className={`view-toggle-btn${view === 'grid' ? ' active' : ''}`}
+            onClick={() => handleViewChange('grid')}
+            title="Grid view"
+          >
+            <LayoutGrid size={14} />
+          </button>
         </div>
 
         <button
@@ -352,29 +433,50 @@ export default function Servers(): React.JSX.Element {
         {addError && <span className="cp-inline-error">{addError}</span>}
       </div>
 
-      <div className="server-list-header">
-        <span className="col-dot" />
-        <span className="col-star" />
-        <button className="col-sort" onClick={() => toggleSort('name')}>
-          Name{sortKey === 'name' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-        </button>
-        <button className="col-sort" onClick={() => toggleSort('map')}>
-          Map{sortKey === 'map' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-        </button>
-        <button className="col-sort col-sort-right" onClick={() => toggleSort('players')}>
-          Players{sortKey === 'players' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-        </button>
-        <button className="col-sort col-sort-right" onClick={() => toggleSort('ping')}>
-          Ping{sortKey === 'ping' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-        </button>
-        <span className="col-lock" />
-      </div>
+      {view === 'list' && (
+        <div className="server-list-header">
+          <span className="col-dot" />
+          <span className="col-star" />
+          <button className="col-sort" onClick={() => toggleSort('name')}>
+            Name{sortKey === 'name' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+          </button>
+          <button className="col-sort" onClick={() => toggleSort('map')}>
+            Map{sortKey === 'map' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+          </button>
+          <button className="col-sort col-sort-right" onClick={() => toggleSort('players')}>
+            Players{sortKey === 'players' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+          </button>
+          <button className="col-sort col-sort-right" onClick={() => toggleSort('ping')}>
+            Ping{sortKey === 'ping' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+          </button>
+          <span className="col-lock" />
+        </div>
+      )}
 
-      <div className="server-list-viewport" ref={viewportRef} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
-        {firstLoad && (
+      <div
+        className={`server-list-viewport${view === 'grid' ? ' server-grid-viewport' : ''}`}
+        ref={viewportRef}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      >
+        {firstLoad && view === 'list' && (
           <div className="server-list-skeleton">
             {Array.from({ length: 10 }, (_, i) => (
               <div key={i} className="server-row-skeleton" style={{ top: i * ROW_HEIGHT }} />
+            ))}
+          </div>
+        )}
+
+        {firstLoad && view === 'grid' && (
+          <div className="server-grid-skeleton">
+            {Array.from({ length: 12 }, (_, i) => (
+              <div
+                key={i}
+                className="server-card-skeleton"
+                style={{
+                  top: Math.floor(i / columnCount) * (CARD_HEIGHT + CARD_GAP),
+                  left: (i % columnCount) * (CARD_WIDTH + CARD_GAP)
+                }}
+              />
             ))}
           </div>
         )}
@@ -399,7 +501,7 @@ export default function Servers(): React.JSX.Element {
           </div>
         )}
 
-        {!firstLoad && !error && anyResults && (
+        {!firstLoad && !error && anyResults && view === 'list' && (
           <div className="server-list-spacer" style={{ height: rows.length * ROW_HEIGHT }}>
             {visibleRows.map((server, i) => {
               const index = startIndex + i
@@ -438,6 +540,73 @@ export default function Servers(): React.JSX.Element {
                     {unreachable ? 'timeout' : `${server.ping} ms`}
                   </span>
                   <span className="row-lock">{server.locked && <Lock size={12} />}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {!firstLoad && !error && anyResults && view === 'grid' && (
+          <div className="server-grid-spacer" style={{ height: totalGridRows * (CARD_HEIGHT + CARD_GAP) }}>
+            {visibleCards.map((server, i) => {
+              const index = gridStartIndex + i
+              const key = serverKey(server)
+              const isFavorite = favKeys.has(key)
+              const unreachable = server.ping === null
+              const selected = selectedKey === key
+              const row = Math.floor(index / columnCount)
+              const col = index % columnCount
+              return (
+                <div
+                  key={key}
+                  className={`server-card${selected ? ' selected' : ''}${unreachable ? ' unreachable' : ''}`}
+                  style={{ top: row * (CARD_HEIGHT + CARD_GAP), left: col * (CARD_WIDTH + CARD_GAP) }}
+                  tabIndex={0}
+                  onClick={() => setSelectedKey(key)}
+                  onDoubleClick={() => handleConnect(server)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleConnect(server)}
+                  onContextMenu={(e) => openMenu(e, server)}
+                >
+                  <div className="server-card-thumb">
+                    <MapThumb map={server.map} />
+                    <button
+                      className={`server-card-star${isFavorite ? ' active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleToggleFavorite(server)
+                      }}
+                      title={isFavorite ? 'Remove favorite' : 'Add favorite'}
+                    >
+                      {isFavorite ? '★' : '☆'}
+                    </button>
+                    {server.locked && (
+                      <span className="server-card-lock">
+                        <Lock size={12} />
+                      </span>
+                    )}
+                  </div>
+                  <div className="server-card-body">
+                    <p className="server-card-name">{server.name}</p>
+                    <p className="server-card-map">{server.map || '—'}</p>
+                    <div className="server-card-stats">
+                      <span className="server-card-players">
+                        {server.players}<span className="server-card-players-max">/{server.maxPlayers}</span>
+                      </span>
+                      <span className={`server-card-ping${pingTone(server.ping)}`}>
+                        <span className={`status-dot${unreachable ? '' : ' status-dot-ok'}`} />
+                        {unreachable ? 'timeout' : `${server.ping} ms`}
+                      </span>
+                    </div>
+                    <button
+                      className="cp-btn-primary server-card-connect"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleConnect(server)
+                      }}
+                    >
+                      Connect
+                    </button>
+                  </div>
                 </div>
               )
             })}
@@ -496,7 +665,7 @@ export default function Servers(): React.JSX.Element {
               </button>
             </div>
             <div className="server-drawer-thumb">
-              <span>{drawerServer.map || '—'}</span>
+              <MapThumb map={drawerServer.map} />
             </div>
             <dl className="server-drawer-meta">
               <dt>Address</dt>

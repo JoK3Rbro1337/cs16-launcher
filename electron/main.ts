@@ -5,6 +5,8 @@ import { detectSteam } from './modules/steam-detect'
 import { BACKUP_DIRNAME } from './modules/content-sync'
 import { playGame, connectToServer, openSteamFix } from './modules/launch'
 import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './modules/server-browser'
+import { fetchServerSources, type ServerSourceSpec } from './modules/server-sources'
+import { getMapThumbnail } from './modules/map-thumbnails'
 import { fetchManifest, syncContent, type BuildProfile } from './modules/content-sync'
 import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
 
@@ -58,6 +60,8 @@ function registerIpc(): void {
   ipcMain.handle('servers:query', (_e, favorites: FavoriteServer[]) => queryServers(favorites))
   ipcMain.handle('servers:query-one', (_e, ip: string, port: number) => queryServer(ip, port))
   ipcMain.handle('servers:query-players', (_e, ip: string, port: number) => queryPlayers(ip, port))
+  ipcMain.handle('servers:fetch-sources', (_e, specs: ServerSourceSpec[]) => fetchServerSources(specs))
+  ipcMain.handle('servers:map-thumbnail', (_e, mapName: string) => getMapThumbnail(mapName))
   ipcMain.handle('content:fetch-manifest', (_e, manifestUrl: string) => fetchManifest(manifestUrl))
   ipcMain.handle('content:sync', (event, manifestUrl: string, profile: BuildProfile) =>
     syncContent(manifestUrl, profile, (progress) => event.sender.send('content:progress', progress))

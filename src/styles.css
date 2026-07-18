@@ -838,6 +838,46 @@ body {
   color: var(--cs-accent);
 }
 
+.filter-chip-select {
+  appearance: none;
+  font-family: var(--font-ui);
+}
+
+.filter-chip-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.view-toggle {
+  flex-shrink: 0;
+  display: flex;
+  padding: 2px;
+  border-radius: 4px;
+  background: var(--cs-bg-2);
+}
+
+.view-toggle-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--cs-text-mid);
+  cursor: pointer;
+}
+
+.view-toggle-btn:hover {
+  color: var(--cs-text-hi);
+}
+
+.view-toggle-btn.active {
+  background: var(--cs-bg-3);
+  color: var(--cs-accent);
+}
+
 .refresh-btn {
   width: 30px;
   height: 30px;
@@ -1150,6 +1190,204 @@ body {
   animation: none;
 }
 
+/* Grid view — cards (M11) */
+
+.server-grid-viewport {
+  padding-top: 4px;
+}
+
+.server-grid-spacer,
+.server-grid-skeleton {
+  position: relative;
+}
+
+.server-card,
+.server-card-skeleton {
+  position: absolute;
+  width: 236px;
+  height: 196px;
+}
+
+.server-card-skeleton {
+  border-radius: 6px;
+  background: var(--cs-bg-2);
+  overflow: hidden;
+}
+
+.server-card-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--cs-bg-3), transparent);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-card-skeleton::after {
+    animation: none;
+  }
+}
+
+:root.reduce-motion .server-card-skeleton::after {
+  animation: none;
+}
+
+.server-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  background: var(--cs-bg-2);
+  cursor: pointer;
+  overflow: hidden;
+  animation: card-fade-in 100ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-card {
+    animation: none;
+  }
+}
+
+:root.reduce-motion .server-card {
+  animation: none;
+}
+
+@keyframes card-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.server-card:hover {
+  background: var(--cs-bg-3);
+}
+
+.server-card.selected {
+  box-shadow: inset 0 0 0 2px var(--cs-accent);
+}
+
+.server-card.unreachable {
+  opacity: 0.5;
+}
+
+.server-card-thumb {
+  position: relative;
+  height: 108px;
+  flex-shrink: 0;
+}
+
+.server-card-star {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: rgba(13, 16, 14, 0.55);
+  color: var(--cs-text-hi);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.server-card-star.active {
+  color: var(--cs-accent);
+}
+
+.server-card-lock {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: rgba(13, 16, 14, 0.55);
+  color: var(--cs-text-hi);
+}
+
+.server-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 10px;
+}
+
+.server-card-name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--cs-text-hi);
+}
+
+.server-card-map {
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--cs-text-mid);
+}
+
+.server-card-stats {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.server-card-players {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--cs-text-hi);
+}
+
+.server-card-players-max {
+  font-size: 12px;
+  color: var(--cs-text-low);
+}
+
+.server-card-ping {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cs-text-mid);
+}
+
+.server-card-ping.ping-ok {
+  color: var(--cs-ok);
+}
+
+.server-card-ping.ping-warn {
+  color: var(--cs-warn);
+}
+
+.server-card-ping.ping-danger {
+  color: var(--cs-danger);
+}
+
+.server-card-connect {
+  width: 100%;
+  height: 28px;
+  margin-top: auto;
+}
+
 .server-list-message {
   position: absolute;
   inset: 0;
@@ -1265,15 +1503,76 @@ body {
 .server-drawer-thumb {
   height: 140px;
   border-radius: 6px;
+  overflow: hidden;
+  position: relative;
   background: var(--cs-bg-2);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Map thumbnails — resources/maps lookup + styled fallback (M11)         */
+/* ---------------------------------------------------------------------- */
+
+.map-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The generated art bakes its own map-name label into the bottom-left —
+     crop from the top so that band never survives next to the card/drawer's
+     own HTML label underneath, which would otherwise double up. */
+  object-position: top;
+  display: block;
+}
+
+.map-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--cs-text-low);
+  overflow: hidden;
+  background: var(--cs-bg-2);
+}
+
+.map-thumb-fallback::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.map-thumb-fallback span {
+  position: relative;
+  z-index: 1;
+  padding: 0 10px;
   font-family: var(--font-display);
-  font-size: 14px;
+  font-weight: 700;
+  font-size: 13px;
+  text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--cs-text-mid);
+}
+
+/* Four neutral schematic patterns, distinguished by geometry rather than
+   hue — the token system reserves olive for interactive/live elements, and
+   a grid of unknown-map cards could show many of these at once. */
+
+.map-thumb-fallback.fallback-sand::before {
+  background-image: repeating-linear-gradient(45deg, var(--cs-bg-3) 0, var(--cs-bg-3) 1px, transparent 1px, transparent 12px);
+}
+
+.map-thumb-fallback.fallback-olive::before {
+  background-image: repeating-linear-gradient(90deg, var(--cs-border) 0, var(--cs-border) 1px, transparent 1px, transparent 16px),
+    repeating-linear-gradient(0deg, var(--cs-border) 0, var(--cs-border) 1px, transparent 1px, transparent 16px);
+}
+
+.map-thumb-fallback.fallback-slate::before {
+  background-image: radial-gradient(var(--cs-bg-3) 1.5px, transparent 1.5px);
+  background-size: 14px 14px;
+}
+
+.map-thumb-fallback.fallback-rust::before {
+  background-image: repeating-linear-gradient(-45deg, var(--cs-bg-3) 0, var(--cs-bg-3) 1px, transparent 1px, transparent 12px);
 }
 
 .server-drawer-meta {
@@ -1509,6 +1808,51 @@ body {
 
 :root.reduce-motion .toggle-switch-thumb {
   transition: none;
+}
+
+.server-sources-hint {
+  padding-top: 12px;
+}
+
+.server-sources-hint code {
+  font-family: var(--font-mono);
+  color: var(--cs-text-hi);
+}
+
+.server-sources-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.server-sources-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--cs-border);
+}
+
+.server-sources-item:last-child {
+  border-bottom: none;
+}
+
+.server-sources-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cs-text-hi);
+}
+
+.server-sources-input {
+  max-width: none;
+  flex: 1;
+  font-family: var(--font-mono);
 }
 
 /* Content sync screen */

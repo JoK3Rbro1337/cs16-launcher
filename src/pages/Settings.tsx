@@ -6,6 +6,22 @@ import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setRedu
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
 import ConfirmModal from '../components/ConfirmModal'
+import {
+  getBattlemetricsEnabled,
+  loadSubscriptions,
+  saveSubscriptions,
+  setBattlemetricsEnabled,
+  type ServerSubscription
+} from '../lib/serverSources'
+
+function isValidSourceUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 
 type SyncState = 'idle' | 'syncing' | 'done' | 'error'
 type SyncAction = 'sync' | 'verify'
@@ -92,6 +108,11 @@ export default function Settings(): React.JSX.Element {
 
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+
+  const [subscriptions, setSubscriptions] = useState<ServerSubscription[]>(loadSubscriptions)
+  const [subUrl, setSubUrl] = useState('')
+  const [subError, setSubError] = useState<string | null>(null)
+  const [battlemetricsEnabled, setBattlemetricsEnabledState] = useState(getBattlemetricsEnabled)
 
   useEffect(() => {
     return window.launcher.onSyncProgress((p) => {
@@ -182,6 +203,35 @@ export default function Settings(): React.JSX.Element {
 
   async function handleInstallUpdate(): Promise<void> {
     await window.launcher.installUpdate()
+  }
+
+  function handleToggleBattlemetrics(): void {
+    const next = !battlemetricsEnabled
+    setBattlemetricsEnabled(next)
+    setBattlemetricsEnabledState(next)
+  }
+
+  function handleAddSubscription(): void {
+    const url = subUrl.trim()
+    if (!isValidSourceUrl(url)) {
+      setSubError('Enter a valid http(s) URL')
+      return
+    }
+    if (subscriptions.some((s) => s.url === url)) {
+      setSubError('Already added')
+      return
+    }
+    const next = [...subscriptions, { id: crypto.randomUUID(), url }]
+    setSubscriptions(next)
+    saveSubscriptions(next)
+    setSubUrl('')
+    setSubError(null)
+  }
+
+  function handleRemoveSubscription(id: string): void {
+    const next = subscriptions.filter((s) => s.id !== id)
+    setSubscriptions(next)
+    saveSubscriptions(next)
   }
 
   const pct = progress && progress.totalBytes > 0 ? progress.downloadedBytes / progress.totalBytes : state === 'done' ? 1 : 0
@@ -304,6 +354,63 @@ export default function Settings(): React.JSX.Element {
           <button className="cp-btn-secondary" onClick={handleOpenBackupFolder}>
             <FolderOpen size={14} /> Open
           </button>
+        </div>
+      </div>
+
+      <h2 className="section-header">Server Sources</h2>
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">BattleMetrics</p>
+            <p className="settings-row-desc">
+              Public server list from battlemetrics.com — addresses only, no key required. Server name, map,
+              players, and ping always come from our own queries.
+            </p>
+          </div>
+          <button
+            className={`toggle-switch${battlemetricsEnabled ? ' on' : ''}`}
+            role="switch"
+            aria-checked={battlemetricsEnabled}
+            aria-label="BattleMetrics source"
+            onClick={handleToggleBattlemetrics}
+          >
+            <span className="toggle-switch-thumb" />
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <p className="settings-row-desc server-sources-hint">
+          Add URLs that return plain-text <code>ip:port</code> lines or a JSON array. Fetched and merged in on
+          every server-list refresh.
+        </p>
+        {subscriptions.length === 0 ? (
+          <p className="muted">No subscriptions added.</p>
+        ) : (
+          <ul className="server-sources-list">
+            {subscriptions.map((sub) => (
+              <li key={sub.id} className="server-sources-item">
+                <span className="server-sources-url">{sub.url}</span>
+                <button className="cp-btn-secondary" onClick={() => handleRemoveSubscription(sub.id)}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="servers-add-row">
+          <input
+            type="text"
+            className="cp-input servers-add-input server-sources-input"
+            placeholder="https://example.com/servers.txt"
+            value={subUrl}
+            onChange={(e) => setSubUrl(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddSubscription()}
+          />
+          <button className="cp-btn-secondary" onClick={handleAddSubscription}>
+            Add source
+          </button>
+          {subError && <span className="cp-inline-error">{subError}</span>}
         </div>
       </div>
 
