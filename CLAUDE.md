@@ -12,3 +12,11 @@ Known conventions:
 - Sandbox-only for destructive tests (see rule above).
 - Stock CS 1.6 paths are flat, e.g. `cstrike/models/v_deagle.mdl` — there is no `models/weapons/` subfolder in the vanilla depot.
 - The config mechanism (M9) execs variant/feature `.cfg` files via a managed block in `cstrike/autoexec.cfg`, delimited by BEGIN/END markers; everything outside the block is left untouched.
+
+## Roadmap
+
+- **M11.2** — server browser speed: source catalog cache with ~15min TTL + background refresh, raise A2S concurrency with short timeout + single retry, stream results to UI as they answer, measure time-to-first-20-servers.
+- **M12** — background polling of favorites + system notifications with rules (player threshold, map match, quiet hours).
+- **M13** — nickname tracking from A2S_PLAYER + profile export/import json.
+- **Content tasks (manual, no code)**: content-v2 pack curation, README screenshots, custom map thumbnails.
+- **Deferred**: crosshair overlay, Windows test, social/accounts, v0.3.0 release after M12-M13.
