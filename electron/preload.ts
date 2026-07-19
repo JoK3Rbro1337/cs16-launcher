@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
 import type { FavoriteServer, GameServer, QueryServersResult, ServerPlayer } from './modules/server-browser'
 import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sources'
-import type { BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
+import type { BackedUpFile, BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
+import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
 import type { UpdateStatus } from './modules/updater'
 
 /**
@@ -35,6 +36,17 @@ const launcher = {
     ipcRenderer.on('content:progress', listener)
     return () => ipcRenderer.removeListener('content:progress', listener)
   },
+  ensureLocalConfigVariant: (): Promise<LocalVariantSnapshot | null> =>
+    ipcRenderer.invoke('config:ensure-local-variant'),
+  getLocalConfigVariant: (): Promise<LocalVariantSnapshot | null> =>
+    ipcRenderer.invoke('config:get-local-variant'),
+  previewUpdateLocalConfigVariant: (): Promise<UpdatePreview> =>
+    ipcRenderer.invoke('config:preview-update-local-variant'),
+  commitUpdateLocalConfigVariant: (): Promise<LocalVariantSnapshot> =>
+    ipcRenderer.invoke('config:commit-update-local-variant'),
+  listBackups: (): Promise<BackedUpFile[]> => ipcRenderer.invoke('config:list-backups'),
+  restoreBackup: (relPath: string): Promise<void> => ipcRenderer.invoke('config:restore-backup', relPath),
+  restoreAllBackups: (): Promise<{ restored: string[] }> => ipcRenderer.invoke('config:restore-all-backups'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   openGameFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-game-folder'),
   openBackupFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-backup-folder'),

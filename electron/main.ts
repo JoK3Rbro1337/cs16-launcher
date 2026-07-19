@@ -2,12 +2,18 @@ import { join } from 'node:path'
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { detectSteam } from './modules/steam-detect'
-import { BACKUP_DIRNAME } from './modules/content-sync'
+import { BACKUP_DIRNAME, listBackups, restoreBackup, restoreAllBackups } from './modules/content-sync'
 import { playGame, connectToServer, openSteamFix } from './modules/launch'
 import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './modules/server-browser'
 import { fetchServerSources, type ServerSourceSpec } from './modules/server-sources'
 import { getMapThumbnail } from './modules/map-thumbnails'
 import { fetchManifest, syncContent, type BuildProfile } from './modules/content-sync'
+import {
+  ensureLocalVariant,
+  loadLocalVariant,
+  previewUpdateLocalVariant,
+  commitUpdateLocalVariant
+} from './modules/local-config-variant'
 import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
 
 function createWindow(): void {
@@ -66,6 +72,14 @@ function registerIpc(): void {
   ipcMain.handle('content:sync', (event, manifestUrl: string, profile: BuildProfile) =>
     syncContent(manifestUrl, profile, (progress) => event.sender.send('content:progress', progress))
   )
+  ipcMain.handle('config:ensure-local-variant', () => ensureLocalVariant())
+  ipcMain.handle('config:get-local-variant', () => loadLocalVariant())
+  ipcMain.handle('config:preview-update-local-variant', () => previewUpdateLocalVariant())
+  ipcMain.handle('config:commit-update-local-variant', () => commitUpdateLocalVariant())
+  ipcMain.handle('config:list-backups', () => listBackups())
+  ipcMain.handle('config:restore-backup', (_e, relPath: string) => restoreBackup(relPath))
+  ipcMain.handle('config:restore-all-backups', () => restoreAllBackups())
+
   ipcMain.handle('updater:check', () => checkForUpdates())
   ipcMain.handle('updater:download', () => downloadUpdate())
   ipcMain.handle('updater:install', () => installUpdate())

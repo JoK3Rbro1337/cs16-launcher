@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { FolderOpen, TriangleAlert } from 'lucide-react'
-import type { BuildProfile, SyncProgress, SyncProgressItem, SyncResult } from '../../electron/modules/content-sync'
+import type {
+  BackedUpFile,
+  BuildProfile,
+  SyncProgress,
+  SyncProgressItem,
+  SyncResult
+} from '../../electron/modules/content-sync'
 import type { UpdateStatus } from '../../electron/modules/updater'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
@@ -114,6 +120,11 @@ export default function Settings(): React.JSX.Element {
   const [subError, setSubError] = useState<string | null>(null)
   const [battlemetricsEnabled, setBattlemetricsEnabledState] = useState(getBattlemetricsEnabled)
 
+  const [backups, setBackups] = useState<BackedUpFile[] | null>(null)
+  const [restoringPath, setRestoringPath] = useState<string | null>(null)
+  const [confirmRestoreAll, setConfirmRestoreAll] = useState(false)
+  const [restoringAll, setRestoringAll] = useState(false)
+
   useEffect(() => {
     return window.launcher.onSyncProgress((p) => {
       setProgress(p)
@@ -133,6 +144,15 @@ export default function Settings(): React.JSX.Element {
   }, [])
 
   useEffect(() => registerVerifyHandler(() => setConfirmVerify(true)), [])
+
+  function refreshBackups(): void {
+    window.launcher
+      .listBackups()
+      .then(setBackups)
+      .catch(() => setBackups([]))
+  }
+
+  useEffect(refreshBackups, [])
 
   useEffect(() => {
     window.launcher.getAppVersion().then(setAppVersion)
@@ -190,6 +210,33 @@ export default function Settings(): React.JSX.Element {
       await window.launcher.openBackupFolder()
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleRestoreBackup(path: string): Promise<void> {
+    setRestoringPath(path)
+    try {
+      await window.launcher.restoreBackup(path)
+      setBackups((prev) => prev?.filter((f) => f.path !== path) ?? null)
+      pushToast(`Restored ${fileName(path)}`, 'ok')
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRestoringPath(null)
+    }
+  }
+
+  async function handleRestoreAllBackups(): Promise<void> {
+    setConfirmRestoreAll(false)
+    setRestoringAll(true)
+    try {
+      const { restored } = await window.launcher.restoreAllBackups()
+      setBackups([])
+      pushToast(`Restored ${restored.length} file(s)`, 'ok')
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRestoringAll(false)
     }
   }
 
@@ -356,6 +403,52 @@ export default function Settings(): React.JSX.Element {
           </button>
         </div>
       </div>
+
+      <h2 className="section-header">Restore Original Files</h2>
+      <div className="settings-card">
+        <p className="settings-row-desc restore-files-hint">
+          Whatever was on disk before the launcher first overwrote it, for every file it's touched — the safety net
+          behind every sync.
+        </p>
+        {backups === null && <p className="muted">Loading…</p>}
+        {backups !== null && backups.length === 0 && <p className="muted">No backed-up files — nothing to restore.</p>}
+        {backups !== null && backups.length > 0 && (
+          <>
+            <ul className="restore-files-list">
+              {backups.map((file) => (
+                <li key={file.path} className="restore-files-item">
+                  <span className="restore-files-path">{file.path}</span>
+                  <span className="restore-files-size">{formatBytes(file.size)}</span>
+                  <button
+                    className="cp-btn-secondary"
+                    disabled={restoringPath === file.path || restoringAll}
+                    onClick={() => handleRestoreBackup(file.path)}
+                  >
+                    {restoringPath === file.path ? 'Restoring…' : 'Restore'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              className="cp-btn-secondary restore-files-all"
+              disabled={restoringAll}
+              onClick={() => setConfirmRestoreAll(true)}
+            >
+              {restoringAll ? 'Restoring all…' : `Restore all (${backups.length})`}
+            </button>
+          </>
+        )}
+      </div>
+
+      {confirmRestoreAll && (
+        <ConfirmModal
+          title="Restore Original Files"
+          message={`Restores all ${backups?.length ?? 0} backed-up file(s) to what they were before the launcher touched them. Anything a manifest variant put in their place is replaced.`}
+          confirmLabel="Restore All"
+          onConfirm={handleRestoreAllBackups}
+          onCancel={() => setConfirmRestoreAll(false)}
+        />
+      )}
 
       <h2 className="section-header">Server Sources</h2>
       <div className="settings-card">

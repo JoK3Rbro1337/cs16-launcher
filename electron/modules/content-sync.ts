@@ -78,14 +78,20 @@
  * pruneOrphans' restore-or-delete. config.cfg is excluded from this
  * mechanism entirely and must never be written by the launcher — the engine
  * overwrites it on exit, so anything we wrote there would just be lost.
+ *
+ * The config slot additionally gets a client-only "My Config" pseudo-variant
+ * (see local-config-variant.ts) representing whatever config.cfg already has
+ * — selecting it is a no-op here, by construction: its id matches no real
+ * manifest variant, so the slot lookup below just contributes nothing.
  */
 
 import { createHash } from 'node:crypto'
-import { createReadStream, createWriteStream } from 'node:fs'
-import { access, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve, sep } from 'node:path'
+import { createReadStream, createWriteStream, type Dirent } from 'node:fs'
+import { access, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { once } from 'node:events'
 import { detectSteam } from './steam-detect'
+import { CONFIG_SLOT_ID, ensureLocalVariant } from './local-config-variant'
 
 export interface ManifestFile {
   path: string
@@ -399,6 +405,72 @@ async function pruneOrphans(
   return { removed, restored }
 }
 
+export interface BackedUpFile {
+  /** Manifest-relative path, e.g. "cstrike/scripts/markeloff.cfg". */
+  path: string
+  size: number
+}
+
+/** The install root, resolved the same way syncContent finds it — for the standalone backup-browsing/restore UI. */
+async function requireContentDir(): Promise<string> {
+  const detection = await detectSteam()
+  if (!detection.installed || !detection.gamePath) {
+    throw new Error('CS 1.6 install not found — run Steam detection first')
+  }
+  return detection.gamePath
+}
+
+/** Lists every file currently sitting in `.16x-launcher-backups/`, for the "Restore original files" UI. */
+export async function listBackups(): Promise<BackedUpFile[]> {
+  const contentDir = await requireContentDir()
+  const backupRoot = join(contentDir, BACKUP_DIRNAME)
+  let entries: Dirent[]
+  try {
+    entries = await readdir(backupRoot, { recursive: true, withFileTypes: true })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw err
+  }
+  const files: BackedUpFile[] = []
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    const absPath = join(entry.parentPath ?? entry.path, entry.name)
+    const relPath = relative(backupRoot, absPath).split(sep).join('/')
+    const stats = await stat(absPath)
+    files.push({ path: relPath, size: stats.size })
+  }
+  return files.sort((a, b) => a.path.localeCompare(b.path))
+}
+
+/**
+ * Restores one backed-up file to its original location and stops tracking it
+ * as launcher-owned (mirrors what pruneOrphans does on reclaim) — so a later
+ * sync backs it up fresh again before ever overwriting it, instead of
+ * treating the just-restored original as an orphan with no backup to fall
+ * back to.
+ */
+export async function restoreBackup(relPath: string): Promise<void> {
+  const contentDir = await requireContentDir()
+  const backupPath = resolveBackupPath(contentDir, relPath)
+  const destPath = resolveContentPath(contentDir, relPath)
+  await mkdir(dirname(destPath), { recursive: true })
+  await rename(backupPath, destPath)
+
+  const state = await loadState(contentDir)
+  if (relPath in state.files) {
+    delete state.files[relPath]
+    await saveState(contentDir, state)
+  }
+}
+
+export async function restoreAllBackups(): Promise<{ restored: string[] }> {
+  const files = await listBackups()
+  for (const file of files) {
+    await restoreBackup(file.path)
+  }
+  return { restored: files.map((f) => f.path) }
+}
+
 async function downloadFile(
   file: ManifestFile,
   destPath: string,
@@ -467,6 +539,14 @@ export async function syncContent(
   const contentDir = detection.gamePath
 
   const manifest = await fetchManifest(manifestUrl)
+
+  // First sync ever to include a config slot: snapshot the player's existing
+  // config.cfg into the "My Config" local variant before anything else runs,
+  // so there's something to switch back to. No-ops once a snapshot exists.
+  if (manifest.slots.some((slot) => slot.id === CONFIG_SLOT_ID)) {
+    await ensureLocalVariant()
+  }
+
   const desired = computeDesiredFiles(manifest, profile)
   const state = await loadState(contentDir)
 

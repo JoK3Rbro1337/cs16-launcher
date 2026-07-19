@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import type { BuildProfile, ContentManifest } from '../../electron/modules/content-sync'
+import type { LocalVariantSnapshot, UpdatePreview } from '../../electron/modules/local-config-variant'
 import {
   BUILD_PROFILE_KEY,
   MANIFEST_URL_KEY,
@@ -8,10 +9,14 @@ import {
   loadJSON,
   saveJSON
 } from '../lib/storage'
+import { CONFIG_SLOT_ID, LOCAL_VARIANT_ID } from '../lib/configVariant'
+import { useToast } from '../lib/toast'
+import ConfirmModal from '../components/ConfirmModal'
 
 interface SkinItem {
   id: string
   name: string
+  isLocal?: boolean
 }
 
 interface SkinCategory {
@@ -112,15 +117,27 @@ function reconcileProfile(profile: BuildProfile, categories: SkinCategory[], fea
 }
 
 function manifestToCategories(manifest: ContentManifest): SkinCategory[] {
-  return manifest.slots.map((slot) => ({
-    id: slot.id,
-    label: slot.label,
-    items: slot.variants.map((variant) => ({ id: variant.id, name: variant.label }))
-  }))
+  return manifest.slots.map((slot) => {
+    const items: SkinItem[] = slot.variants.map((variant) => ({ id: variant.id, name: variant.label }))
+    // "My Config" is client-only and always leads the config slot's items,
+    // so it's both the default selection (reconcileProfile picks items[0]
+    // for an unset/stale choice) and never shadowed by a manifest variant.
+    if (slot.id === CONFIG_SLOT_ID) {
+      items.unshift({ id: LOCAL_VARIANT_ID, name: 'My Config', isLocal: true })
+    }
+    return { id: slot.id, label: slot.label, items }
+  })
 }
 
 function manifestToFeatures(manifest: ContentManifest): Feature[] {
   return manifest.features.map((feature) => ({ id: feature.id, label: feature.label }))
+}
+
+function formatSnapshotDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  })
 }
 
 function CollapsibleSection({
@@ -146,6 +163,7 @@ function CollapsibleSection({
 }
 
 export default function Content(): React.JSX.Element {
+  const { pushToast } = useToast()
   const [detection, setDetection] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
   const [profile, setProfile] = useState<BuildProfile>(() => loadJSON(BUILD_PROFILE_KEY, emptyProfile()))
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
@@ -156,9 +174,15 @@ export default function Content(): React.JSX.Element {
   const [manifest, setManifest] = useState<ContentManifest | null>(null)
   const [manifestError, setManifestError] = useState<string | null>(null)
 
+  const [localVariant, setLocalVariant] = useState<LocalVariantSnapshot | null>(null)
+  const [localVariantChecked, setLocalVariantChecked] = useState(false)
+  const [updatePreview, setUpdatePreview] = useState<UpdatePreview | null>(null)
+  const [updatingSnapshot, setUpdatingSnapshot] = useState(false)
+
   const usingManifest = manifestUrl !== '' && manifest !== null
   const categories = usingManifest ? manifestToCategories(manifest) : PLACEHOLDER_CATEGORIES
   const features = usingManifest ? manifestToFeatures(manifest) : PLACEHOLDER_FEATURES
+  const hasConfigSlot = categories.some((category) => category.id === CONFIG_SLOT_ID)
 
   useEffect(() => {
     window.launcher
@@ -166,6 +190,20 @@ export default function Content(): React.JSX.Element {
       .then(setDetection)
       .catch(() => setDetection('error'))
   }, [])
+
+  // First render of the config slot: auto-snapshot the player's existing
+  // config.cfg into "My Config", if one exists and nothing's been snapshotted
+  // yet. ensureLocalConfigVariant is idempotent, so this is safe to re-run.
+  useEffect(() => {
+    if (!hasConfigSlot || localVariantChecked) return
+    window.launcher
+      .ensureLocalConfigVariant()
+      .then((snapshot) => {
+        setLocalVariant(snapshot)
+        setLocalVariantChecked(true)
+      })
+      .catch(() => setLocalVariantChecked(true))
+  }, [hasConfigSlot, localVariantChecked])
 
   useEffect(() => {
     if (!manifestUrl) return
@@ -218,6 +256,33 @@ export default function Content(): React.JSX.Element {
     })
   }
 
+  async function handleRequestUpdateSnapshot(): Promise<void> {
+    try {
+      const preview = await window.launcher.previewUpdateLocalConfigVariant()
+      if (!preview.configCfgFound) {
+        pushToast("config.cfg not found — launch the game at least once first")
+        return
+      }
+      setUpdatePreview(preview)
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleConfirmUpdateSnapshot(): Promise<void> {
+    setUpdatingSnapshot(true)
+    try {
+      const snapshot = await window.launcher.commitUpdateLocalConfigVariant()
+      setLocalVariant(snapshot)
+      pushToast('My Config snapshot updated', 'ok')
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUpdatingSnapshot(false)
+      setUpdatePreview(null)
+    }
+  }
+
   return (
     <section className="page">
       <h1>Content</h1>
@@ -240,18 +305,54 @@ export default function Content(): React.JSX.Element {
                 return (
                   <button
                     key={item.id}
-                    className={`item-card${selected ? ' selected' : ''}`}
+                    className={`item-card${selected ? ' selected' : ''}${item.isLocal ? ' item-card-local' : ''}`}
                     onClick={() => selectItem(category.id, item.id)}
                   >
+                    {item.isLocal && <span className="item-badge-local">Local</span>}
                     <div className="item-thumb" />
                     <span className="item-name">{item.name}</span>
                   </button>
                 )
               })}
             </div>
+
+            {category.id === CONFIG_SLOT_ID && profile.selections[category.id] === LOCAL_VARIANT_ID && (
+              <div className="my-config-panel">
+                {localVariant ? (
+                  <p className="my-config-panel-meta">
+                    Snapshot taken {formatSnapshotDate(localVariant.updatedAt)}
+                    {localVariant.strippedCount > 0 &&
+                      ` · ${localVariant.strippedCount} line(s) removed for safety`}
+                  </p>
+                ) : (
+                  <p className="my-config-panel-meta muted">
+                    {localVariantChecked
+                      ? "No config.cfg found yet — nothing to snapshot."
+                      : 'Checking for an existing config.cfg…'}
+                  </p>
+                )}
+                <button className="cp-btn-secondary" onClick={handleRequestUpdateSnapshot}>
+                  Update snapshot
+                </button>
+              </div>
+            )}
           </CollapsibleSection>
         ))}
       </div>
+
+      {updatePreview && (
+        <ConfirmModal
+          title="Update My Config Snapshot"
+          message={
+            updatePreview.hasSnapshot
+              ? `Re-reads your current in-game settings. ${updatePreview.changedLines} line(s) will change.`
+              : 'Re-reads your current in-game settings to create the first snapshot.'
+          }
+          confirmLabel={updatingSnapshot ? 'Updating…' : 'Update Snapshot'}
+          onConfirm={handleConfirmUpdateSnapshot}
+          onCancel={() => setUpdatePreview(null)}
+        />
+      )}
 
       {!usingManifest && <p className="note">Content selection will apply after content-pack integration.</p>}
 
