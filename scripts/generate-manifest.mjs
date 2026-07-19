@@ -112,12 +112,12 @@ function toAssetName(rawPath) {
   return rawPath.replace(/\//g, '__').replace(/[^A-Za-z0-9._-]/g, '-')
 }
 
-/** Mirrors content-sync.ts's isExecCfg convention: any cstrike/*.cfg other than config.cfg/autoexec.cfg. */
+/** Mirrors content-sync.ts's isExecCfg convention: any cstrike/*.cfg other than config.cfg/autoexec.cfg/userconfig.cfg. */
 function inferFileType(manifestPath) {
   const lower = manifestPath.toLowerCase()
   if (!lower.startsWith('cstrike/') || !lower.endsWith('.cfg')) return undefined
   const base = lower.slice(lower.lastIndexOf('/') + 1)
-  if (base === 'config.cfg' || base === 'autoexec.cfg') return undefined
+  if (base === 'config.cfg' || base === 'autoexec.cfg' || base === 'userconfig.cfg') return undefined
   return 'exec-cfg'
 }
 

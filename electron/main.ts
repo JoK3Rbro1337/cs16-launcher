@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { detectSteam } from './modules/steam-detect'
+import { checkLaunchOptions } from './modules/steam-launch-options'
 import { BACKUP_DIRNAME, listBackups, restoreBackup, restoreAllBackups } from './modules/content-sync'
 import { playGame, connectToServer, openSteamFix } from './modules/launch'
 import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './modules/server-browser'
@@ -60,6 +61,7 @@ function createWindow(): void {
 
 function registerIpc(): void {
   ipcMain.handle('steam:detect', () => detectSteam())
+  ipcMain.handle('steam:check-launch-options', () => checkLaunchOptions())
   ipcMain.handle('launch:play', () => playGame())
   ipcMain.handle('launch:connect', (_e, ip: string, port: number) => connectToServer(ip, port))
   ipcMain.handle('launch:fix-steam', (_e, steamFound: boolean) => openSteamFix(steamFound))

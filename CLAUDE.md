@@ -11,7 +11,8 @@ Next steps: user is curating config/HUD/voiceover packs for content-v2 — gener
 Known conventions:
 - Sandbox-only for destructive tests (see rule above).
 - Stock CS 1.6 paths are flat, e.g. `cstrike/models/v_deagle.mdl` — there is no `models/weapons/` subfolder in the vanilla depot.
-- The config mechanism (M9) execs variant/feature `.cfg` files via a managed block in `cstrike/autoexec.cfg`, delimited by BEGIN/END markers; everything outside the block is left untouched.
+- The config mechanism (M9) execs variant/feature `.cfg` files via an identical managed block written to both `cstrike/autoexec.cfg` and `cstrike/userconfig.cfg`, delimited by BEGIN/END markers; everything outside the block is left untouched.
+- **Gotcha (M9 follow-up, real-world finding):** `autoexec.cfg` auto-execution is unreliable on modern Steam GoldSrc builds — some builds only exec it when `+exec autoexec.cfg` is present in the game's Steam Launch Options; never assume it fires on its own. `userconfig.cfg` is the reliable zero-setup path (exec'd via the `exec userconfig.cfg` line Valve's own stock `config.cfg` already ends with), so it's now the primary managed-block target, with `autoexec.cfg` kept as a redundant fallback. See `electron/modules/steam-launch-options.ts` for the read-only Launch Options check.
 
 ## Roadmap
 

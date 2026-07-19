@@ -64,17 +64,28 @@
  *
  * Config files get one more layer on top: any desired file that is a game
  * config (`type: "exec-cfg"`, or by convention any cstrike/*.cfg other than
- * config.cfg/autoexec.cfg) syncs as a normal file through the same
- * base/slot/feature pipeline above — nothing special there — but is also
- * `exec`'d automatically by writing an `exec <path>` line into a clearly
- * delimited block inside cstrike/autoexec.cfg, which the engine already
- * execs on startup. The block is fully recomputed from the current desired
- * set on every sync (rewritten on variant switch, emptied on deselect) and
- * everything outside its BEGIN/END markers — a player's own autoexec lines
- * — is left untouched. autoexec.cfg is backed up on its first-ever write via
- * the same backupIfNeeded used for regular files, but is deliberately never
- * added to the state file's whole-file ownership map: we only ever own the
- * block inside it, never the file itself, so it must never go through
+ * config.cfg/autoexec.cfg/userconfig.cfg) syncs as a normal file through the
+ * same base/slot/feature pipeline above — nothing special there — but is
+ * also `exec`'d automatically by writing an identical `exec <path>` block
+ * into *two* targets: cstrike/autoexec.cfg and cstrike/userconfig.cfg (see
+ * MANAGED_EXEC_TARGETS). Two, not one — M9 follow-up, real-world finding:
+ * on current Steam GoldSrc builds autoexec.cfg is only auto-exec'd if the
+ * player has `+exec autoexec.cfg` in their Steam Launch Options, a manual
+ * step most players will never take, so a config variant can silently do
+ * nothing. userconfig.cfg needs no such setup — it's exec'd unconditionally
+ * via the `exec userconfig.cfg` line Valve's own stock config.cfg template
+ * already ends with — so it's the primary path and autoexec.cfg is kept as
+ * a redundant fallback (harmless if both fire: re-applying the same cvars
+ * twice is a no-op). See steam-launch-options.ts for the read-only Launch
+ * Options check that drives the in-app notice about this.
+ *
+ * Each target's block is fully recomputed from the current desired set on
+ * every sync (rewritten on variant switch, emptied on deselect) and
+ * everything outside its BEGIN/END markers — a player's own lines — is left
+ * untouched. Each target is backed up on its first-ever write via the same
+ * backupIfNeeded used for regular files, but is deliberately never added to
+ * the state file's whole-file ownership map: we only ever own the block
+ * inside it, never the file itself, so it must never go through
  * pruneOrphans' restore-or-delete. config.cfg is excluded from this
  * mechanism entirely and must never be written by the launcher — the engine
  * overwrites it on exit, so anything we wrote there would just be lost.
@@ -181,7 +192,8 @@ const STATE_FILENAME = '.16x-launcher-state.json'
 export const BACKUP_DIRNAME = '.16x-launcher-backups'
 const CONCURRENCY = 4
 
-const AUTOEXEC_PATH = 'cstrike/autoexec.cfg'
+/** Both get the identical managed exec block written to them — see the module doc comment for why. */
+const MANAGED_EXEC_TARGETS = ['cstrike/autoexec.cfg', 'cstrike/userconfig.cfg']
 const BLOCK_BEGIN = '// === 16X LAUNCHER MANAGED BLOCK — DO NOT EDIT BELOW THIS LINE ==='
 const BLOCK_END = '// === 16X LAUNCHER MANAGED BLOCK — END ==='
 
@@ -307,14 +319,14 @@ function computeDesiredFiles(
   return desired
 }
 
-/** True for a game config that the managed autoexec.cfg block should `exec`. */
+/** True for a game config that the managed exec block(s) should `exec`. */
 function isExecCfg(file: ManifestFile): boolean {
   if (file.type === 'exec-cfg') return true
   const lower = file.path.toLowerCase()
   if (!lower.startsWith('cstrike/')) return false
   if (!lower.endsWith('.cfg')) return false
   const base = lower.slice(lower.lastIndexOf('/') + 1)
-  return base !== 'config.cfg' && base !== 'autoexec.cfg'
+  return base !== 'config.cfg' && base !== 'autoexec.cfg' && base !== 'userconfig.cfg'
 }
 
 /** A manifest path relative to the game root -> the name the engine's `exec` expects (relative to cstrike/). */
@@ -337,8 +349,8 @@ function stripManagedBlock(lines: string[]): string[] {
   return [...before, ...after]
 }
 
-/** Recomputes autoexec.cfg's full text: existing content untouched, managed block rewritten (or removed). */
-function buildAutoexecContent(existingText: string, execPaths: string[]): string {
+/** Recomputes a managed-block target's full text: existing content untouched, managed block rewritten (or removed). */
+function buildManagedCfgContent(existingText: string, execPaths: string[]): string {
   const lines = existingText.length > 0 ? existingText.split('\n') : []
   const stripped = stripManagedBlock(lines)
   if (execPaths.length === 0) {
@@ -355,24 +367,27 @@ function buildAutoexecContent(existingText: string, execPaths: string[]): string
 }
 
 /**
- * Rewrites the managed block inside cstrike/autoexec.cfg from the current
- * desired exec-cfg set. Deliberately outside the state-file/pruneOrphans
- * ownership model — see the module doc comment for why.
+ * Rewrites the managed block inside each of MANAGED_EXEC_TARGETS from the
+ * current desired exec-cfg set. Deliberately outside the
+ * state-file/pruneOrphans ownership model — see the module doc comment for
+ * why, and for why there are two targets rather than one.
  */
-async function syncAutoexec(contentDir: string, execPaths: string[]): Promise<void> {
-  const destPath = resolveContentPath(contentDir, AUTOEXEC_PATH)
-  const existingText = await readFile(destPath, 'utf-8').catch((err) => {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return ''
-    throw err
-  })
-  const nextText = buildAutoexecContent(existingText, execPaths)
-  if (nextText === existingText) return
+async function syncManagedExecTargets(contentDir: string, execPaths: string[]): Promise<void> {
+  for (const targetPath of MANAGED_EXEC_TARGETS) {
+    const destPath = resolveContentPath(contentDir, targetPath)
+    const existingText = await readFile(destPath, 'utf-8').catch((err) => {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return ''
+      throw err
+    })
+    const nextText = buildManagedCfgContent(existingText, execPaths)
+    if (nextText === existingText) continue
 
-  await backupIfNeeded(contentDir, AUTOEXEC_PATH, destPath)
-  await mkdir(dirname(destPath), { recursive: true })
-  const tmpPath = `${destPath}.part`
-  await writeFile(tmpPath, nextText)
-  await rename(tmpPath, destPath)
+    await backupIfNeeded(contentDir, targetPath, destPath)
+    await mkdir(dirname(destPath), { recursive: true })
+    const tmpPath = `${destPath}.part`
+    await writeFile(tmpPath, nextText)
+    await rename(tmpPath, destPath)
+  }
 }
 
 /**
@@ -615,7 +630,7 @@ export async function syncContent(
     .filter(({ file }) => isExecCfg(file))
     .map(({ file }) => toExecName(file.path))
     .sort()
-  await syncAutoexec(contentDir, execPaths)
+  await syncManagedExecTargets(contentDir, execPaths)
 
   await saveState(contentDir, state)
 

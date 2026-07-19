@@ -10,6 +10,7 @@ import {
   loadJSON
 } from '../lib/storage'
 import { useToast } from '../lib/toast'
+import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
 
 type PlayState = 'steam-missing' | 'update' | 'syncing' | 'launching' | 'idle'
 
@@ -168,6 +169,8 @@ export default function Home(): React.JSX.Element {
         <p className="hero-meta">
           v{appVersion ?? '…'} · {syncLabel}
         </p>
+
+        {manifestUrl && <LaunchOptionsNotice className="launch-options-notice-compact" />}
 
         <div className="hero-play-row">
           <button

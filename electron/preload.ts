@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
+import type { LaunchOptionsCheck } from './modules/steam-launch-options'
 import type { FavoriteServer, GameServer, QueryServersResult, ServerPlayer } from './modules/server-browser'
 import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sources'
 import type { BackedUpFile, BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
@@ -12,6 +13,7 @@ import type { UpdateStatus } from './modules/updater'
  */
 const launcher = {
   detectSteam: (): Promise<SteamDetectResult> => ipcRenderer.invoke('steam:detect'),
+  checkLaunchOptions: (): Promise<LaunchOptionsCheck> => ipcRenderer.invoke('steam:check-launch-options'),
   play: (): Promise<void> => ipcRenderer.invoke('launch:play'),
   connect: (ip: string, port: number): Promise<void> =>
     ipcRenderer.invoke('launch:connect', ip, port),

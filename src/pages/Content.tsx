@@ -12,6 +12,7 @@ import {
 import { CONFIG_SLOT_ID, LOCAL_VARIANT_ID } from '../lib/configVariant'
 import { useToast } from '../lib/toast'
 import ConfirmModal from '../components/ConfirmModal'
+import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
 
 interface SkinItem {
   id: string
@@ -290,6 +291,8 @@ export default function Content(): React.JSX.Element {
       {manifestUrl && manifestError && (
         <p className="note">Couldn't load the content pack ({manifestError}) — showing placeholder content.</p>
       )}
+
+      {hasConfigSlot && <LaunchOptionsNotice />}
 
       <div className="category-list">
         {categories.map((category) => (
