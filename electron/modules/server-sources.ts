@@ -10,15 +10,28 @@
  *    objects). No schema negotiation: whichever parses first wins.
  *  - `battlemetrics` — an optional built-in source hitting BattleMetrics'
  *    public servers API (https://www.battlemetrics.com/developers/documentation).
- *    Confirmed keyless: unauthenticated GETs are allowed (60/min, 15/sec
- *    burst) and `filter[game]=cs` is the classic GoldSrc Counter-Strike 1.6
- *    slug (distinct from `csgo`/`css`) — verified against the live API
- *    while building this feature. No secret ever ships in the app.
+ *    `filter[game]=cs` is the classic GoldSrc Counter-Strike 1.6 slug
+ *    (distinct from `csgo`/`css`). No secret ever ships in the app.
+ *
+ *    **Live-use finding, 2026-07:** BattleMetrics now returns 403 for every
+ *    unauthenticated request — `{"errors":[{"status":"403","title":"Forbidden",
+ *    "detail":"Access denied. A subscription is required to use the API."}]}`
+ *    — confirmed directly against the live endpoint with multiple User-Agents,
+ *    so this isn't a User-Agent or IP-range block, it's a real policy change:
+ *    the public read API this was built against is no longer keyless. There is
+ *    no free-tier workaround; we just surface BattleMetrics' own `detail`
+ *    message (see fetchBattlemetricsAddresses) instead of a bare HTTP code,
+ *    and default the source to OFF (see BATTLEMETRICS_ENABLED_KEY's fallback
+ *    in src/lib/serverSources.ts) since it can't work for anyone without a
+ *    paid subscription.
  *
  * Every source here provides *addresses only* — name/map/players/ping
  * always come from our own A2S queries in server-browser.ts, never from the
- * source. A source failing (bad URL, timeout, malformed body) is reported
- * per-source and never aborts the others or the refresh as a whole.
+ * source. A source failing (bad URL, timeout, malformed body, HTTP error) is
+ * reported per-source in plain language (see friendlyStatusMessage) and never
+ * aborts the others or the refresh as a whole; favorites are merged in
+ * unconditionally by the caller (Servers.tsx) regardless of source outcomes,
+ * so a source failure can never empty the browser on its own.
  */
 
 import type { FavoriteServer } from './server-browser'
@@ -65,11 +78,26 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/** Plain-language fallback for an HTTP failure whose body isn't in a known/parseable shape. */
+function friendlyStatusMessage(status: number, statusText: string): string {
+  if (status === 401 || status === 403) return 'Access denied (may require an API key or subscription)'
+  if (status === 404) return 'Not found — check the URL'
+  if (status === 429) return 'Rate limited — try again shortly'
+  if (status >= 500) return 'Service temporarily unavailable'
+  return `Request failed (HTTP ${status}${statusText ? ` ${statusText}` : ''})`
+}
+
+/** Normalizes network-level failures (DNS, connection refused, timeout) into plain language too. */
 async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
     return await fetch(url, { signal: controller.signal, headers: { 'User-Agent': '16x-launcher' } })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Timed out after ${FETCH_TIMEOUT_MS / 1000}s`)
+    }
+    throw new Error('Network error — check your connection')
   } finally {
     clearTimeout(timer)
   }
@@ -109,7 +137,7 @@ export function parseAddressList(text: string): FavoriteServer[] {
 
 export async function fetchSubscription(url: string): Promise<FavoriteServer[]> {
   const res = await fetchWithTimeout(url)
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+  if (!res.ok) throw new Error(friendlyStatusMessage(res.status, res.statusText))
   return parseAddressList(await res.text())
 }
 
@@ -120,6 +148,22 @@ interface BattlemetricsServer {
 interface BattlemetricsResponse {
   data?: BattlemetricsServer[]
   links?: { next?: string }
+}
+
+interface BattlemetricsErrorResponse {
+  errors?: { detail?: string; title?: string }[]
+}
+
+/** BattleMetrics' JSON:API error body carries a human-readable `detail` — prefer it over a bare status code. */
+async function battlemetricsErrorMessage(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as BattlemetricsErrorResponse
+    const detail = body.errors?.[0]?.detail ?? body.errors?.[0]?.title
+    if (detail) return detail
+  } catch {
+    // body wasn't the expected JSON:API error shape — fall through
+  }
+  return friendlyStatusMessage(res.status, res.statusText)
 }
 
 function extractAddresses(servers: BattlemetricsServer[]): FavoriteServer[] {
@@ -142,7 +186,7 @@ export async function fetchBattlemetricsAddresses(): Promise<FavoriteServer[]> {
     if (page > 0) await delay(BATTLEMETRICS_PAGE_DELAY_MS)
     const res: Response = await fetchWithTimeout(url)
     if (!res.ok) {
-      if (page === 0) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+      if (page === 0) throw new Error(await battlemetricsErrorMessage(res))
       break // Later page failed — keep what we already fetched rather than discarding it.
     }
     const body = (await res.json()) as BattlemetricsResponse

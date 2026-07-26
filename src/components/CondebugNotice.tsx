@@ -3,6 +3,9 @@ import { Copy } from 'lucide-react'
 import type { LaunchOptionsCheck } from '../../electron/modules/steam-launch-options'
 import { CONDEBUG_NOTICE_DISMISSED_KEY, loadJSON, saveJSON } from '../lib/storage'
 
+const RECHECK_INTERVAL_MS = 30_000
+const CONDEBUG_RE = /(^|\s)-condebug(\s|$)/i
+
 /**
  * One-time, dismissible: nudges the player to add `-condebug` to their CS
  * 1.6 Steam Launch Options. Unlike LaunchOptionsNotice's autoexec.cfg flag,
@@ -11,6 +14,13 @@ import { CONDEBUG_NOTICE_DISMISSED_KEY, loadJSON, saveJSON } from '../lib/storag
  * accordingly, but dismissing it just means the quick-connect card falls
  * back to launcher-only history (see Home.tsx) rather than the feature
  * appearing broken.
+ *
+ * Re-checks periodically rather than once on mount (live-use finding): Steam
+ * doesn't necessarily flush localconfig.vdf to disk the instant Launch
+ * Options are edited, so a check performed right after editing them can read
+ * a stale on-disk copy and show this notice even though the option is
+ * already set live. Polling lets it self-correct once Steam catches up,
+ * without the player having to dismiss it or restart the launcher.
  */
 export default function CondebugNotice({ className }: { className?: string }): React.JSX.Element | null {
   const [check, setCheck] = useState<LaunchOptionsCheck | null>(null)
@@ -18,15 +28,23 @@ export default function CondebugNotice({ className }: { className?: string }): R
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    window.launcher
-      .checkLaunchOptions()
-      .then(setCheck)
-      .catch(() => setCheck(null))
+    function refresh(): void {
+      window.launcher
+        .checkLaunchOptions()
+        .then(setCheck)
+        .catch(() => setCheck(null))
+    }
+    refresh()
+    const interval = setInterval(refresh, RECHECK_INTERVAL_MS)
+    return () => clearInterval(interval)
   }, [])
 
   if (dismissed || !check || !check.checked || check.hasCondebug) return null
 
-  const recommended = check.currentOptions.trim() ? `${check.currentOptions.trim()} -condebug` : '-condebug'
+  const trimmed = check.currentOptions.trim()
+  // Defensive: never show a duplicated flag even if hasCondebug and this raw-string
+  // check somehow disagree (e.g. a stale read resolved between the two).
+  const recommended = trimmed ? (CONDEBUG_RE.test(trimmed) ? trimmed : `${trimmed} -condebug`) : '-condebug'
 
   function handleCopy(): void {
     navigator.clipboard

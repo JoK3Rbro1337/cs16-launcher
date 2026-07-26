@@ -39,6 +39,12 @@ interface FunnelSummary {
   responding: number
 }
 
+interface SourceIssue {
+  id: string
+  kind: string
+  message: string
+}
+
 function loadFavorites(): FavoriteServer[] {
   try {
     const raw = localStorage.getItem(FAVORITES_KEY)
@@ -151,6 +157,7 @@ export default function Servers(): React.JSX.Element {
   const [players, setPlayers] = useState<ServerPlayer[] | 'loading' | 'error'>('loading')
   const [view, setView] = useState<ServerView>(loadView)
   const [funnel, setFunnel] = useState<FunnelSummary | null>(null)
+  const [sourceIssues, setSourceIssues] = useState<SourceIssue[]>([])
   const [retryingKeys, setRetryingKeys] = useState<Set<string>>(new Set())
 
   const searchRef = useRef<HTMLInputElement>(null)
@@ -165,9 +172,16 @@ export default function Servers(): React.JSX.Element {
     try {
       const specs = currentSourceSpecs()
       const sourceResults = specs.length > 0 ? await window.launcher.fetchServerSources(specs) : []
+      const issues: SourceIssue[] = []
       for (const source of sourceResults) {
-        if (source.error) pushToast(`Server source "${source.id}" failed: ${source.error}`)
+        if (source.error) {
+          issues.push({ id: source.id, kind: source.kind, message: source.error })
+          pushToast(`Server source "${source.id}" failed: ${source.error}`)
+        }
       }
+      setSourceIssues(issues)
+      // Favorites are always merged in regardless of what sourceResults contains, so a
+      // source failing (or master discovery coming up empty) can never wipe them out.
       const seed = dedupeAddresses([favorites, ...sourceResults.map((s) => s.addresses)])
       const result = await window.launcher.queryServers(seed)
       setServers(result.servers)
@@ -485,6 +499,16 @@ export default function Servers(): React.JSX.Element {
           <span className="servers-funnel-num">{funnel.addresses}</span> address{funnel.addresses === 1 ? '' : 'es'}
           {' · '}
           <span className="servers-funnel-num">{funnel.responding}</span> responding
+        </div>
+      )}
+
+      {sourceIssues.length > 0 && (
+        <div className="servers-source-issues">
+          {sourceIssues.map((issue) => (
+            <p key={issue.id} className="servers-source-issue">
+              {issue.kind === 'battlemetrics' ? 'BattleMetrics' : issue.id}: {issue.message}
+            </p>
+          ))}
         </div>
       )}
 

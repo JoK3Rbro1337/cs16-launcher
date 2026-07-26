@@ -39,6 +39,14 @@
  * players with the same never-throws fallback behavior already relied on
  * elsewhere.
  *
+ * Address filtering (live-use finding): a "Create Game" listen server connects
+ * to a loopback address (127.0.0.1) that briefly showed up as "last server" —
+ * loopback is filtered out of tracking entirely (see classifyAddress).
+ * Private LAN addresses (10/8, 172.16/12, 192.168/16) are still tracked into
+ * history, but must never become the persisted/emitted "last server" — that
+ * pointer only ever moves for public addresses, so a real public server
+ * already recorded there survives a LAN session untouched.
+ *
  * "launcher" vs. "in-game" source: launch.ts's connectToServer path calls
  * noteLauncherConnect(ip, port) right before handing off to steam://connect.
  * When a matching "Server IP address" line shows up within
@@ -200,14 +208,41 @@ function finalizeLiveSession(leftAt: number): void {
   appendHistory(entry).catch(() => {})
 }
 
+type AddressClass = 'loopback' | 'private' | 'public'
+
+/**
+ * 127.0.0.0/8 only — GoldSrc/CS 1.6 networking is IPv4-only in practice, so
+ * ::1 isn't a real concern here. 10/8, 172.16/12, 192.168/16 are private LAN.
+ */
+function classifyAddress(ip: string): AddressClass {
+  const octets = ip.split('.').map(Number)
+  if (octets[0] === 127) return 'loopback'
+  if (octets[0] === 10) return 'private'
+  if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return 'private'
+  if (octets[0] === 192 && octets[1] === 168) return 'private'
+  return 'public'
+}
+
 function handleConnect(ip: string, port: number): void {
+  const addressClass = classifyAddress(ip)
+  // Loopback (a "Create Game" listen server) is noise, not a session — filtered out
+  // entirely: no live update, no persisted "last server", no history entry. In
+  // particular this must NOT finalize whatever real session was live before it —
+  // starting a local practice server should not look like "you left server X".
+  if (addressClass === 'loopback') return
+
   finalizeLiveSession(Date.now())
 
   const source = resolveSource(ip, port)
   const connectedAt = Date.now()
   liveSession = { ip, port, map: currentMap, name: null, connectedAt, source }
-  emitSession(liveSession)
-  persistLastSession(liveSession).catch(() => {})
+  // Private LAN sessions are still tracked (liveSession, history via the next
+  // finalize) but must never become the persisted/emitted "last server" — a
+  // public server already recorded there must not be overwritten by a LAN game.
+  if (addressClass === 'public') {
+    emitSession(liveSession)
+    persistLastSession(liveSession).catch(() => {})
+  }
 
   queryServer(ip, port)
     .then((info) => {
@@ -215,8 +250,10 @@ function handleConnect(ip: string, port: number): void {
         return // superseded by a newer connect while the query was in flight
       }
       liveSession = { ...liveSession, name: info.name, map: info.map || liveSession.map }
-      emitSession(liveSession)
-      persistLastSession(liveSession).catch(() => {})
+      if (addressClass === 'public') {
+        emitSession(liveSession)
+        persistLastSession(liveSession).catch(() => {})
+      }
     })
     .catch(() => {})
 }
@@ -381,6 +418,7 @@ async function seedFromServerBrowserHistory(): Promise<void> {
       const port = Number(entry.address.slice(idx + 1))
       const lastPlayed = Number(entry.LastPlayed)
       if (!Number.isInteger(port) || !Number.isFinite(lastPlayed)) continue
+      if (classifyAddress(ip) !== 'public') continue // seeding only ever populates the public "last server" pointer
       if (!best || lastPlayed > best.lastPlayed) best = { ip, port, lastPlayed }
     }
     if (!best) return

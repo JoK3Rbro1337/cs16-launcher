@@ -1045,6 +1045,17 @@ body {
   color: var(--cs-text-mid);
 }
 
+.servers-source-issues {
+  flex-shrink: 0;
+  margin: -4px 0 8px;
+}
+
+.servers-source-issue {
+  margin: 0;
+  font-size: 11px;
+  color: var(--cs-warn);
+}
+
 .servers-add-row {
   flex-shrink: 0;
   display: flex;

@@ -19,9 +19,16 @@ export function saveSubscriptions(subs: ServerSubscription[]): void {
   saveJSON(SERVER_SOURCES_KEY, subs)
 }
 
-/** BattleMetrics is a keyless public read API (see electron/modules/server-sources.ts) — on by default. */
+/**
+ * Off by default — BattleMetrics' public API now requires a paid subscription
+ * (confirmed live, 2026-07: every unauthenticated request gets a 403 with
+ * "Access denied. A subscription is required to use the API."). See
+ * electron/modules/server-sources.ts's doc comment. Users who do have a
+ * subscription can still flip this on in Settings; it just isn't a useful
+ * default anymore since it can't work for anyone without one.
+ */
 export function getBattlemetricsEnabled(): boolean {
-  return loadJSON(BATTLEMETRICS_ENABLED_KEY, true)
+  return loadJSON(BATTLEMETRICS_ENABLED_KEY, false)
 }
 
 export function setBattlemetricsEnabled(value: boolean): void {

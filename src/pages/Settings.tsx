@@ -456,8 +456,9 @@ export default function Settings(): React.JSX.Element {
           <div>
             <p className="settings-row-label">BattleMetrics</p>
             <p className="settings-row-desc">
-              Public server list from battlemetrics.com — addresses only, no key required. Server name, map,
-              players, and ping always come from our own queries.
+              Server list from battlemetrics.com — as of 2026-07 their public API requires a paid subscription
+              (unauthenticated requests get an access-denied error), so this is off by default. Only enable it
+              if you have one. Server name, map, players, and ping always come from our own queries either way.
             </p>
           </div>
           <button
