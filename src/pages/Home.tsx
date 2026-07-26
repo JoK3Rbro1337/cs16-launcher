@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import type { BuildProfile, SyncProgress } from '../../electron/modules/content-sync'
 import type { GameServer } from '../../electron/modules/server-browser'
+import type { LiveSession, SessionSource } from '../../electron/modules/session-watcher'
 import {
   BUILD_PROFILE_KEY,
   LAST_SERVER_KEY,
@@ -11,6 +12,7 @@ import {
 } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
+import CondebugNotice from '../components/CondebugNotice'
 
 type PlayState = 'steam-missing' | 'update' | 'syncing' | 'launching' | 'idle'
 
@@ -21,6 +23,17 @@ interface LastServer {
   map: string
   players: number
   maxPlayers: number
+}
+
+/** Unifies the two "last server" sources into one shape the quick-connect card renders from. */
+interface QuickConnectTarget {
+  ip: string
+  port: number
+  name: string
+  map: string
+  players: number
+  maxPlayers: number
+  source: SessionSource
 }
 
 function emptyProfile(): BuildProfile {
@@ -48,6 +61,7 @@ export default function Home(): React.JSX.Element {
   const [launching, setLaunching] = useState(false)
 
   const [lastServer] = useState<LastServer | null>(() => loadJSON<LastServer | null>(LAST_SERVER_KEY, null))
+  const [mainSession, setMainSession] = useState<LiveSession | null>(null)
   const [liveServer, setLiveServer] = useState<GameServer | null>(null)
   const [connecting, setConnecting] = useState(false)
 
@@ -65,16 +79,42 @@ export default function Home(): React.JSX.Element {
     return window.launcher.onSyncProgress(setSyncProgress)
   }, [])
 
+  // session-watcher (main process) knows about ANY connect — launcher or
+  // in-game — and pushes updates live while the game is running; the
+  // legacy localStorage lastServer (launcher-only) is the fallback for
+  // players who don't have -condebug set, per CondebugNotice.
+  useEffect(() => {
+    window.launcher
+      .getLastSession()
+      .then(setMainSession)
+      .catch(() => setMainSession(null))
+    return window.launcher.onSessionUpdate(setMainSession)
+  }, [])
+
+  const target: QuickConnectTarget | null = mainSession
+    ? {
+        ip: mainSession.ip,
+        port: mainSession.port,
+        name: mainSession.name ?? `${mainSession.ip}:${mainSession.port}`,
+        map: mainSession.map,
+        players: 0,
+        maxPlayers: 0,
+        source: mainSession.source
+      }
+    : lastServer
+      ? { ...lastServer, source: 'launcher' }
+      : null
+
   // Re-query on every visit to Home — the persisted snapshot goes stale
   // fast (players/map/ping all change live), so refresh it each time the
   // hero is shown rather than trusting what was true at connect time.
   useEffect(() => {
-    if (!lastServer) return
+    if (!target) return
     window.launcher
-      .queryServer(lastServer.ip, lastServer.port)
+      .queryServer(target.ip, target.port)
       .then(setLiveServer)
       .catch(() => setLiveServer(null))
-  }, [lastServer])
+  }, [target?.ip, target?.port])
 
   const installed = detection !== 'loading' && detection !== 'error' && detection.installed
   const steamFound = detection !== 'loading' && detection !== 'error' && detection.steamPath !== null
@@ -131,10 +171,10 @@ export default function Home(): React.JSX.Element {
   }
 
   async function handleConnectLast(): Promise<void> {
-    if (!lastServer) return
+    if (!target) return
     setConnecting(true)
     try {
-      await window.launcher.connect(lastServer.ip, lastServer.port)
+      await window.launcher.connect(target.ip, target.port)
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
     } finally {
@@ -150,9 +190,9 @@ export default function Home(): React.JSX.Element {
         ? 'Content changes pending'
         : 'Content up to date'
 
-  const serverView = liveServer ?? lastServer
+  const serverView = liveServer ?? target
   const pingLabel = !liveServer
-    ? lastServer
+    ? target
       ? '…'
       : '—'
     : liveServer.ping !== null
@@ -171,6 +211,7 @@ export default function Home(): React.JSX.Element {
         </p>
 
         {manifestUrl && <LaunchOptionsNotice className="launch-options-notice-compact" />}
+        <CondebugNotice className="launch-options-notice-compact" />
 
         <div className="hero-play-row">
           <button
@@ -213,7 +254,14 @@ export default function Home(): React.JSX.Element {
         {!serverView && <p className="muted">No recent connections — visit Servers to connect.</p>}
         {serverView && (
           <>
-            <p className="quickconnect-name">{serverView.name}</p>
+            <p className="quickconnect-name">
+              {serverView.name}
+              {target && (
+                <span className={`quickconnect-source-badge quickconnect-source-badge-${target.source}`}>
+                  {target.source === 'launcher' ? 'Launcher' : 'In-game'}
+                </span>
+              )}
+            </p>
             <p className="quickconnect-meta">
               <span>{serverView.map || '—'}</span>
               <span className="quickconnect-dot">·</span>

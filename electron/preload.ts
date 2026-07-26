@@ -6,6 +6,7 @@ import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sour
 import type { BackedUpFile, BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
 import type { UpdateStatus } from './modules/updater'
+import type { LiveSession, SessionHistoryEntry } from './modules/session-watcher'
 
 /**
  * Renderer-facing API. The renderer has no Node/Electron access — every
@@ -49,6 +50,13 @@ const launcher = {
   listBackups: (): Promise<BackedUpFile[]> => ipcRenderer.invoke('config:list-backups'),
   restoreBackup: (relPath: string): Promise<void> => ipcRenderer.invoke('config:restore-backup', relPath),
   restoreAllBackups: (): Promise<{ restored: string[] }> => ipcRenderer.invoke('config:restore-all-backups'),
+  getLastSession: (): Promise<LiveSession | null> => ipcRenderer.invoke('session:get-last'),
+  getSessionHistory: (): Promise<SessionHistoryEntry[]> => ipcRenderer.invoke('session:get-history'),
+  onSessionUpdate: (callback: (session: LiveSession | null) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, session: LiveSession | null): void => callback(session)
+    ipcRenderer.on('session:update', listener)
+    return () => ipcRenderer.removeListener('session:update', listener)
+  },
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   openGameFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-game-folder'),
   openBackupFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-backup-folder'),

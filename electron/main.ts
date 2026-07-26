@@ -5,6 +5,13 @@ import { detectSteam } from './modules/steam-detect'
 import { checkLaunchOptions } from './modules/steam-launch-options'
 import { BACKUP_DIRNAME, listBackups, restoreBackup, restoreAllBackups } from './modules/content-sync'
 import { playGame, connectToServer, openSteamFix } from './modules/launch'
+import {
+  initSessionWatcher,
+  startWatching as startSessionWatching,
+  noteLauncherConnect,
+  getLastSession,
+  getSessionHistory
+} from './modules/session-watcher'
 import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './modules/server-browser'
 import { fetchServerSources, type ServerSourceSpec } from './modules/server-sources'
 import { getMapThumbnail } from './modules/map-thumbnails'
@@ -62,8 +69,17 @@ function createWindow(): void {
 function registerIpc(): void {
   ipcMain.handle('steam:detect', () => detectSteam())
   ipcMain.handle('steam:check-launch-options', () => checkLaunchOptions())
-  ipcMain.handle('launch:play', () => playGame())
-  ipcMain.handle('launch:connect', (_e, ip: string, port: number) => connectToServer(ip, port))
+  ipcMain.handle('launch:play', () => {
+    startSessionWatching()
+    return playGame()
+  })
+  ipcMain.handle('launch:connect', (_e, ip: string, port: number) => {
+    noteLauncherConnect(ip, port)
+    startSessionWatching()
+    return connectToServer(ip, port)
+  })
+  ipcMain.handle('session:get-last', () => getLastSession())
+  ipcMain.handle('session:get-history', () => getSessionHistory())
   ipcMain.handle('launch:fix-steam', (_e, steamFound: boolean) => openSteamFix(steamFound))
   ipcMain.handle('servers:query', (_e, favorites: FavoriteServer[]) => queryServers(favorites))
   ipcMain.handle('servers:query-one', (_e, ip: string, port: number) => queryServer(ip, port))
@@ -126,6 +142,12 @@ app.whenReady().then(() => {
   initUpdater((status) => {
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send('updater:status', status)
+    }
+  })
+
+  initSessionWatcher((session) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('session:update', session)
     }
   })
 

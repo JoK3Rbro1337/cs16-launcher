@@ -1,9 +1,14 @@
 /**
  * Reads the user's Steam per-game Launch Options for CS 1.6 (appid 10) from
- * userdata/<id>/config/localconfig.vdf, purely to tell whether
- * `+exec autoexec.cfg` is present — see the M9 follow-up doc comment in
- * content-sync.ts for why that matters (autoexec.cfg isn't reliably
- * auto-exec'd on current Steam GoldSrc builds without it).
+ * userdata/<id>/config/localconfig.vdf. Checks two independent flags:
+ *   - `+exec autoexec.cfg` — see the M9 follow-up doc comment in
+ *     content-sync.ts. Confirmed on a real install (see CLAUDE.md) that this
+ *     is no longer necessary now that config variants also exec via
+ *     userconfig.cfg, so it's a reliability nice-to-have, not a hard
+ *     requirement.
+ *   - `-condebug` — a hard requirement for session-watcher.ts (M12a): GoldSrc
+ *     only writes qconsole.log when this flag is set, so without it there is
+ *     nothing to tail at all.
  *
  * Read-only, by design: never writes to localconfig.vdf. Steam owns that
  * file and may rewrite it at any time (including while running), so a
@@ -21,11 +26,13 @@ export interface LaunchOptionsCheck {
   /** False if Steam, or any readable userdata profile, couldn't be found — the UI should stay quiet rather than guess. */
   checked: boolean
   hasExecAutoexec: boolean
+  hasCondebug: boolean
   /** Whatever's currently in Launch Options for CS 1.6, '' if empty. */
   currentOptions: string
 }
 
 const EXEC_AUTOEXEC_RE = /\+exec\s+"?autoexec\.cfg"?/i
+const CONDEBUG_RE = /(^|\s)-condebug(\s|$)/i
 
 /** VDF key casing isn't guaranteed stable across Steam versions — look up case-insensitively. */
 function getCI(obj: unknown, key: string): unknown {
@@ -58,12 +65,14 @@ async function findMostRecentLocalConfig(steamPath: string): Promise<string | nu
   return best?.path ?? null
 }
 
+const NOT_CHECKED: LaunchOptionsCheck = { checked: false, hasExecAutoexec: false, hasCondebug: false, currentOptions: '' }
+
 export async function checkLaunchOptions(): Promise<LaunchOptionsCheck> {
   const detection = await detectSteam()
-  if (!detection.steamPath) return { checked: false, hasExecAutoexec: false, currentOptions: '' }
+  if (!detection.steamPath) return NOT_CHECKED
 
   const configPath = await findMostRecentLocalConfig(detection.steamPath)
-  if (!configPath) return { checked: false, hasExecAutoexec: false, currentOptions: '' }
+  if (!configPath) return NOT_CHECKED
 
   try {
     const text = await readFile(configPath, 'utf-8')
@@ -76,8 +85,13 @@ export async function checkLaunchOptions(): Promise<LaunchOptionsCheck> {
     const appEntry = getCI(apps, CS16_APPID)
     const launchOptions = getCI(appEntry, 'LaunchOptions')
     const currentOptions = typeof launchOptions === 'string' ? launchOptions : ''
-    return { checked: true, hasExecAutoexec: EXEC_AUTOEXEC_RE.test(currentOptions), currentOptions }
+    return {
+      checked: true,
+      hasExecAutoexec: EXEC_AUTOEXEC_RE.test(currentOptions),
+      hasCondebug: CONDEBUG_RE.test(currentOptions),
+      currentOptions
+    }
   } catch {
-    return { checked: false, hasExecAutoexec: false, currentOptions: '' }
+    return NOT_CHECKED
   }
 }

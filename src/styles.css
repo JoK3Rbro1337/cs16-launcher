@@ -763,6 +763,20 @@ body {
   white-space: nowrap;
 }
 
+.quickconnect-source-badge {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--cs-accent-dim);
+  color: var(--cs-accent);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  vertical-align: middle;
+}
+
 .quickconnect-meta {
   margin: 0 0 12px;
   display: flex;
