@@ -15,6 +15,7 @@ export const BATTLEMETRICS_ENABLED_KEY = 'cs16-battlemetrics-enabled'
 export const SERVER_VIEW_KEY = 'cs16-server-view'
 export const LAUNCH_OPTIONS_NOTICE_DISMISSED_KEY = 'cs16-launch-options-notice-dismissed'
 export const CONDEBUG_NOTICE_DISMISSED_KEY = 'cs16-condebug-notice-dismissed'
+export const SOURCE_STATUS_KEY = 'cs16-source-status'
 
 export function loadJSON<T>(key: string, fallback: T): T {
   try {

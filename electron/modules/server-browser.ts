@@ -8,10 +8,24 @@
  * servers reply in either depending on engine build.
  *
  * The GoldSrc-specific master (hl1master.steampowered.com) has been shut down
- * by Valve; hl2master now serves both Source and GoldSrc appids, with a
- * documented IP fallback for when DNS to it is unavailable. Master discovery
+ * by Valve; hl2master was meant to serve both Source and GoldSrc appids, with
+ * a documented IP fallback for when DNS to it is unavailable. Master discovery
  * is best-effort: it merges into the caller-supplied favorites list rather
  * than being required, since the legacy UDP master infrastructure is flaky.
+ *
+ * **Live-use finding, 2026-07:** both fell over. `hl2master.steampowered.com`
+ * is a CNAME to `hl2master.discovery.steamserver.net`, which currently has no
+ * A/AAAA record at all — confirmed against multiple resolvers (system
+ * default, Google's 8.8.8.8 directly via `dig`) from an unrestricted network
+ * path, so this isn't a local DNS quirk. The documented fallback IP,
+ * 208.64.200.65:27015, doesn't answer the master query protocol either (times
+ * out) and doesn't even answer ICMP. Read as: Valve's GoldSrc master
+ * infrastructure at these addresses appears to be dead right now, not merely
+ * flaky. Both hosts are still tried (cheap insurance if Valve fixes DNS or
+ * routing later), but MASTER_QUERY_TIMEOUT_MS was cut in half — waiting the
+ * old 3s per dead host was pure tax on every refresh — and the failure reason
+ * is now returned (see QueryServersResult.masterError) so the UI can say so
+ * plainly instead of showing a silent zero.
  *
  * "Connect" hands off to launch.connectToServer.
  */
@@ -48,9 +62,10 @@ export interface ServerPlayer {
   duration: number
 }
 
-/** hl1master (GoldSrc-only) was shut down by Valve; hl2master now covers CS 1.6 too. */
+/** hl1master (GoldSrc-only) was shut down by Valve; hl2master was meant to cover CS 1.6 too — see module doc comment. */
 const MASTER_SERVERS = ['hl2master.steampowered.com:27011', '208.64.200.65:27015']
-const MASTER_QUERY_TIMEOUT_MS = 3000
+/** Cut from 3000ms (live-use finding: both hosts currently appear dead — no point paying a long timeout twice per refresh). */
+const MASTER_QUERY_TIMEOUT_MS = 1500
 const MAX_MASTER_HOSTS = 200
 const SERVER_QUERY_TIMEOUT_MS = 1500
 const QUERY_CONCURRENCY = 12
@@ -76,8 +91,21 @@ export function parseHostPort(hostPort: string): FavoriteServer | null {
   return { ip: hostPort.slice(0, idx), port }
 }
 
-/** Best-effort: returns [] if every master (and its fallback) fails. */
-async function discoverMasterHosts(): Promise<string[]> {
+/** Plain-language reason for a master-query failure — DNS vs. no-response are worth telling apart in the UI. */
+function friendlyMasterError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  if (message.includes('ENOTFOUND') || message.includes('getaddrinfo')) {
+    return "hostname isn't resolving"
+  }
+  if (message.toLowerCase().includes('timeout')) {
+    return 'no response'
+  }
+  return message
+}
+
+/** Best-effort: returns { hosts: [], error } if every master (and its fallback) fails, rather than failing silently. */
+async function discoverMasterHosts(): Promise<{ hosts: string[]; error: string | null }> {
+  let lastError: string | null = null
   for (const master of MASTER_SERVERS) {
     try {
       const hosts = await queryMasterServer(
@@ -88,13 +116,14 @@ async function discoverMasterHosts(): Promise<string[]> {
         MAX_MASTER_HOSTS
       )
       console.log(`[server-browser] master ${master}: ${hosts.length} hosts`)
-      return hosts
-    } catch {
+      return { hosts, error: null }
+    } catch (err) {
+      lastError = friendlyMasterError(err)
       continue
     }
   }
-  console.log('[server-browser] master discovery: all masters failed, 0 hosts')
-  return []
+  console.log(`[server-browser] master discovery: all masters failed (${lastError}), 0 hosts`)
+  return { hosts: [], error: `Valve's master server(s) unreachable (${lastError})` }
 }
 
 /** Never rejects — an unreachable server is reported with ping: null, not thrown. */
@@ -138,6 +167,8 @@ export interface QueryServersResult {
   queriedCount: number
   /** servers with ping !== null. */
   respondingCount: number
+  /** Plain-language reason master discovery contributed nothing this refresh, or null if it worked (or wasn't needed). */
+  masterError: string | null
 }
 
 /**
@@ -147,7 +178,7 @@ export interface QueryServersResult {
  * still runs here and only contributes hosts not already in the seed.
  */
 export async function queryServers(seedAddresses: FavoriteServer[]): Promise<QueryServersResult> {
-  const masterHosts = await discoverMasterHosts()
+  const { hosts: masterHosts, error: masterError } = await discoverMasterHosts()
 
   const seedKeys = new Set(seedAddresses.map((f) => `${f.ip}:${f.port}`))
   const masterTargets = masterHosts
@@ -168,6 +199,7 @@ export async function queryServers(seedAddresses: FavoriteServer[]): Promise<Que
     masterDiscoveredCount: masterHosts.length,
     masterNewCount: masterTargets.length,
     queriedCount: targets.length,
+    masterError,
     respondingCount
   }
 }

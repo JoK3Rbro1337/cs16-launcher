@@ -5,6 +5,7 @@ import { FAVORITES_KEY, LAST_SERVER_KEY, SERVER_VIEW_KEY, saveJSON } from '../li
 import { useToast } from '../lib/toast'
 import { setKnownServers } from '../lib/serverListStore'
 import { currentSourceSpecs, dedupeAddresses } from '../lib/serverSources'
+import { saveSourceStatus, type SourceStatusEntry } from '../lib/sourceStatus'
 import MapThumb from '../components/MapThumb'
 
 const ROW_HEIGHT = 34
@@ -172,20 +173,38 @@ export default function Servers(): React.JSX.Element {
     try {
       const specs = currentSourceSpecs()
       const sourceResults = specs.length > 0 ? await window.launcher.fetchServerSources(specs) : []
-      const issues: SourceIssue[] = []
       for (const source of sourceResults) {
-        if (source.error) {
-          issues.push({ id: source.id, kind: source.kind, message: source.error })
-          pushToast(`Server source "${source.id}" failed: ${source.error}`)
-        }
+        if (source.error) pushToast(`Server source "${source.id}" failed: ${source.error}`)
       }
-      setSourceIssues(issues)
       // Favorites are always merged in regardless of what sourceResults contains, so a
       // source failing (or master discovery coming up empty) can never wipe them out.
       const seed = dedupeAddresses([favorites, ...sourceResults.map((s) => s.addresses)])
       const result = await window.launcher.queryServers(seed)
       setServers(result.servers)
       setKnownServers(result.servers)
+
+      const now = Date.now()
+      const issues: SourceIssue[] = sourceResults
+        .filter((s) => s.error)
+        .map((s) => ({ id: s.id, kind: s.kind, message: s.error as string }))
+      if (result.masterError) issues.push({ id: 'master', kind: 'master', message: result.masterError })
+      setSourceIssues(issues)
+
+      const status: SourceStatusEntry[] = sourceResults.map((s) => ({
+        id: s.id,
+        kind: s.kind,
+        addresses: s.addresses.length,
+        error: s.error,
+        checkedAt: now
+      }))
+      status.push({
+        id: 'master',
+        kind: 'master',
+        addresses: result.masterDiscoveredCount,
+        error: result.masterError,
+        checkedAt: now
+      })
+      saveSourceStatus(status)
 
       // Diagnostic funnel (M11 follow-up): per-source contribution -> dedup -> A2S response, so a
       // "why does the list feel short" report has real numbers to point at instead of guesswork.
@@ -199,7 +218,7 @@ export default function Servers(): React.JSX.Element {
         favorites: favorites.length,
         battlemetrics: battlemetricsCount,
         subscriptions: subscriptionCounts,
-        master: { discovered: result.masterDiscoveredCount, new: result.masterNewCount },
+        master: { discovered: result.masterDiscoveredCount, new: result.masterNewCount, error: result.masterError },
         dedupedSeed: seed.length,
         totalQueried: result.queriedCount,
         responding: result.respondingCount
@@ -506,7 +525,8 @@ export default function Servers(): React.JSX.Element {
         <div className="servers-source-issues">
           {sourceIssues.map((issue) => (
             <p key={issue.id} className="servers-source-issue">
-              {issue.kind === 'battlemetrics' ? 'BattleMetrics' : issue.id}: {issue.message}
+              {issue.kind === 'battlemetrics' ? 'BattleMetrics' : issue.kind === 'master' ? 'Master server' : issue.id}:{' '}
+              {issue.message}
             </p>
           ))}
         </div>

@@ -2085,6 +2085,13 @@ body {
   font-family: var(--font-mono);
 }
 
+.server-sources-status {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--cs-text-low);
+}
+
 .restore-files-hint {
   padding-bottom: 8px;
 }

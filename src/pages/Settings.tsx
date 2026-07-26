@@ -19,6 +19,7 @@ import {
   setBattlemetricsEnabled,
   type ServerSubscription
 } from '../lib/serverSources'
+import { loadSourceStatus, type SourceStatusEntry } from '../lib/sourceStatus'
 
 function isValidSourceUrl(value: string): boolean {
   try {
@@ -27,6 +28,14 @@ function isValidSourceUrl(value: string): boolean {
   } catch {
     return false
   }
+}
+
+/** "Last check (14:32): 41 addresses" / "Last check (14:32): failed — <reason>" — null if never checked. */
+function sourceStatusLabel(entry: SourceStatusEntry | undefined): string | null {
+  if (!entry) return null
+  const when = new Date(entry.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  if (entry.error) return `Last check (${when}): failed — ${entry.error}`
+  return `Last check (${when}): ${entry.addresses} address${entry.addresses === 1 ? '' : 'es'}`
 }
 
 type SyncState = 'idle' | 'syncing' | 'done' | 'error'
@@ -119,6 +128,7 @@ export default function Settings(): React.JSX.Element {
   const [subUrl, setSubUrl] = useState('')
   const [subError, setSubError] = useState<string | null>(null)
   const [battlemetricsEnabled, setBattlemetricsEnabledState] = useState(getBattlemetricsEnabled)
+  const [sourceStatus, setSourceStatus] = useState<SourceStatusEntry[]>(loadSourceStatus)
 
   const [backups, setBackups] = useState<BackedUpFile[] | null>(null)
   const [restoringPath, setRestoringPath] = useState<string | null>(null)
@@ -454,12 +464,33 @@ export default function Settings(): React.JSX.Element {
       <div className="settings-card">
         <div className="settings-row">
           <div>
+            <p className="settings-row-label">Master server discovery</p>
+            <p className="settings-row-desc">
+              Valve's GoldSrc master server — always on, not configurable. As of 2026-07 it appears to be down
+              (both the hostname and its documented IP fallback are unreachable), so this currently contributes
+              nothing; we keep trying every refresh in case Valve fixes it.
+            </p>
+            {sourceStatusLabel(sourceStatus.find((s) => s.id === 'master')) && (
+              <p className="server-sources-status">{sourceStatusLabel(sourceStatus.find((s) => s.id === 'master'))}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
             <p className="settings-row-label">BattleMetrics</p>
             <p className="settings-row-desc">
               Server list from battlemetrics.com — as of 2026-07 their public API requires a paid subscription
               (unauthenticated requests get an access-denied error), so this is off by default. Only enable it
               if you have one. Server name, map, players, and ping always come from our own queries either way.
             </p>
+            {battlemetricsEnabled && sourceStatusLabel(sourceStatus.find((s) => s.id === 'battlemetrics')) && (
+              <p className="server-sources-status">
+                {sourceStatusLabel(sourceStatus.find((s) => s.id === 'battlemetrics'))}
+              </p>
+            )}
           </div>
           <button
             className={`toggle-switch${battlemetricsEnabled ? ' on' : ''}`}
@@ -484,7 +515,12 @@ export default function Settings(): React.JSX.Element {
           <ul className="server-sources-list">
             {subscriptions.map((sub) => (
               <li key={sub.id} className="server-sources-item">
-                <span className="server-sources-url">{sub.url}</span>
+                <div>
+                  <span className="server-sources-url">{sub.url}</span>
+                  {sourceStatusLabel(sourceStatus.find((s) => s.id === sub.id)) && (
+                    <p className="server-sources-status">{sourceStatusLabel(sourceStatus.find((s) => s.id === sub.id))}</p>
+                  )}
+                </div>
                 <button className="cp-btn-secondary" onClick={() => handleRemoveSubscription(sub.id)}>
                   Remove
                 </button>
