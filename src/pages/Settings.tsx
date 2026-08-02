@@ -13,12 +13,16 @@ import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
 import ConfirmModal from '../components/ConfirmModal'
 import {
+  DEFAULT_SUBSCRIPTION_ID,
   getBattlemetricsEnabled,
+  getNeighborhoodScanEnabled,
   loadSubscriptions,
   saveSubscriptions,
   setBattlemetricsEnabled,
+  setNeighborhoodScanEnabled,
   type ServerSubscription
 } from '../lib/serverSources'
+import { getKnownServerRetentionDays, setKnownServerRetentionDays } from '../lib/knownServers'
 import { loadSourceStatus, type SourceStatusEntry } from '../lib/sourceStatus'
 
 function isValidSourceUrl(value: string): boolean {
@@ -128,6 +132,8 @@ export default function Settings(): React.JSX.Element {
   const [subUrl, setSubUrl] = useState('')
   const [subError, setSubError] = useState<string | null>(null)
   const [battlemetricsEnabled, setBattlemetricsEnabledState] = useState(getBattlemetricsEnabled)
+  const [neighborhoodScanEnabled, setNeighborhoodScanEnabledState] = useState(getNeighborhoodScanEnabled)
+  const [retentionDays, setRetentionDaysState] = useState(getKnownServerRetentionDays)
   const [sourceStatus, setSourceStatus] = useState<SourceStatusEntry[]>(loadSourceStatus)
 
   const [backups, setBackups] = useState<BackedUpFile[] | null>(null)
@@ -266,6 +272,18 @@ export default function Settings(): React.JSX.Element {
     const next = !battlemetricsEnabled
     setBattlemetricsEnabled(next)
     setBattlemetricsEnabledState(next)
+  }
+
+  function handleToggleNeighborhoodScan(): void {
+    const next = !neighborhoodScanEnabled
+    setNeighborhoodScanEnabled(next)
+    setNeighborhoodScanEnabledState(next)
+  }
+
+  function handleRetentionDaysChange(value: number): void {
+    if (!Number.isFinite(value) || value < 1) return
+    setKnownServerRetentionDays(value)
+    setRetentionDaysState(value)
   }
 
   function handleAddSubscription(): void {
@@ -516,6 +534,9 @@ export default function Settings(): React.JSX.Element {
             {subscriptions.map((sub) => (
               <li key={sub.id} className="server-sources-item">
                 <div>
+                  {sub.id === DEFAULT_SUBSCRIPTION_ID && (
+                    <p className="server-sources-default-label">Default curated list (community-maintained)</p>
+                  )}
                   <span className="server-sources-url">{sub.url}</span>
                   {sourceStatusLabel(sourceStatus.find((s) => s.id === sub.id)) && (
                     <p className="server-sources-status">{sourceStatusLabel(sourceStatus.find((s) => s.id === sub.id))}</p>
@@ -541,6 +562,64 @@ export default function Settings(): React.JSX.Element {
             Add source
           </button>
           {subError && <span className="cp-inline-error">{subError}</span>}
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">Known servers pool</p>
+            <p className="settings-row-desc">
+              Every public server you actually connect to — however you joined — is remembered locally and
+              merged into every refresh, same as favorites. No network dependency; it's how the launcher gets
+              better at finding servers the more you play.
+            </p>
+            {sourceStatusLabel(sourceStatus.find((s) => s.id === 'known-pool')) && (
+              <p className="server-sources-status">{sourceStatusLabel(sourceStatus.find((s) => s.id === 'known-pool'))}</p>
+            )}
+          </div>
+        </div>
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">Retention</p>
+            <p className="settings-row-desc">Drop a known server if it hasn't answered in this many days.</p>
+          </div>
+          <input
+            type="number"
+            min={1}
+            className="cp-input settings-number-input"
+            value={retentionDays}
+            onChange={(e) => handleRetentionDaysChange(Number(e.target.value))}
+          />
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">Neighborhood scan</p>
+            <p className="settings-row-desc">
+              Off by default. When enabled, probes nearby addresses (same /24, ports 27015–27020) around servers
+              you already know — favorites and servers you've actually connected to — using the same public
+              status query the in-game browser itself uses. Read-only, no connection to any server; capped and
+              rate-limited per refresh. May slow down refresh and sends UDP packets to addresses you haven't
+              explicitly added.
+            </p>
+            {neighborhoodScanEnabled && sourceStatusLabel(sourceStatus.find((s) => s.id === 'neighborhood')) && (
+              <p className="server-sources-status">
+                {sourceStatusLabel(sourceStatus.find((s) => s.id === 'neighborhood'))}
+              </p>
+            )}
+          </div>
+          <button
+            className={`toggle-switch${neighborhoodScanEnabled ? ' on' : ''}`}
+            role="switch"
+            aria-checked={neighborhoodScanEnabled}
+            aria-label="Neighborhood scan source"
+            onClick={handleToggleNeighborhoodScan}
+          >
+            <span className="toggle-switch-thumb" />
+          </button>
         </div>
       </div>
 

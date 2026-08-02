@@ -2040,6 +2040,12 @@ body {
   transition: none;
 }
 
+.settings-number-input {
+  width: 64px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
 .server-sources-hint {
   padding-top: 12px;
 }
@@ -2068,6 +2074,12 @@ body {
 
 .server-sources-item:last-child {
   border-bottom: none;
+}
+
+.server-sources-default-label {
+  margin: 0 0 2px;
+  font-size: 11px;
+  color: var(--cs-text-mid);
 }
 
 .server-sources-url {

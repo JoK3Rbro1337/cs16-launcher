@@ -1,0 +1,23 @@
+# 1.6X Launcher — default curated CS 1.6 server list
+#
+# Format: one "ip:port" per line. Blank lines and lines starting with '#'
+# are ignored. This file is fetched as a subscription source (see
+# src/lib/serverSources.ts / electron/modules/server-sources.ts) and merged
+# into every server-list refresh alongside favorites, the local known-servers
+# pool, and any other sources a user has added. It ships as an enabled-by-
+# default subscription (user-removable in Settings like any other source).
+#
+# Why this file exists: as of 2026-07, both of the launcher's automated
+# discovery paths are down — Valve's GoldSrc master server infrastructure
+# (see electron/modules/server-browser.ts's module doc comment) and
+# BattleMetrics' public API, which now requires a paid subscription (see
+# electron/modules/server-sources.ts's module doc comment) — so a maintained
+# list like this one is currently the most reliable way to seed new servers
+# for everyone using the launcher, not just people who already have
+# favorites saved.
+#
+# Contributing: open a PR adding "ip:port" lines below (one server per line,
+# no extra whitespace). Please only add servers you'd actually recommend —
+# this list ships enabled by default for every launcher install.
+
+# TODO(maintainer): seed with current favorites — see chat, still pending

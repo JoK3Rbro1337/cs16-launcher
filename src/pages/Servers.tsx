@@ -4,7 +4,8 @@ import type { FavoriteServer, GameServer, ServerPlayer } from '../../electron/mo
 import { FAVORITES_KEY, LAST_SERVER_KEY, SERVER_VIEW_KEY, saveJSON } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { setKnownServers } from '../lib/serverListStore'
-import { currentSourceSpecs, dedupeAddresses } from '../lib/serverSources'
+import { currentSourceSpecs, dedupeAddresses, getNeighborhoodScanEnabled } from '../lib/serverSources'
+import { getKnownServerRetentionDays } from '../lib/knownServers'
 import { saveSourceStatus, type SourceStatusEntry } from '../lib/sourceStatus'
 import MapThumb from '../components/MapThumb'
 
@@ -172,22 +173,56 @@ export default function Servers(): React.JSX.Element {
     setError(null)
     try {
       const specs = currentSourceSpecs()
-      const sourceResults = specs.length > 0 ? await window.launcher.fetchServerSources(specs) : []
+      const [sourceResults, knownPool] = await Promise.all([
+        specs.length > 0 ? window.launcher.fetchServerSources(specs) : Promise.resolve([]),
+        window.launcher.getKnownServers()
+      ])
       for (const source of sourceResults) {
         if (source.error) pushToast(`Server source "${source.id}" failed: ${source.error}`)
       }
-      // Favorites are always merged in regardless of what sourceResults contains, so a
-      // source failing (or master discovery coming up empty) can never wipe them out.
-      const seed = dedupeAddresses([favorites, ...sourceResults.map((s) => s.addresses)])
+      const knownAddresses: FavoriteServer[] = knownPool.map((k) => ({ ip: k.ip, port: k.port }))
+
+      // Favorites and the known-servers pool are always merged in regardless of what
+      // sourceResults contains, so a source failing (or master discovery coming up
+      // empty) can never wipe them out.
+      let seed = dedupeAddresses([favorites, knownAddresses, ...sourceResults.map((s) => s.addresses)])
+
+      // Neighborhood scan (opt-in, off by default) — only ever seeded from the user's
+      // own favorites + known-servers pool, never from subscription/master/BattleMetrics
+      // addresses (see neighborhood-scan.ts's module doc comment for why).
+      let neighborhoodResult: { addresses: FavoriteServer[]; probed: number } | null = null
+      let neighborhoodError: string | null = null
+      if (getNeighborhoodScanEnabled()) {
+        try {
+          const userKnownAddresses = dedupeAddresses([favorites, knownAddresses])
+          neighborhoodResult = await window.launcher.scanNeighborhood(userKnownAddresses, seed)
+          seed = dedupeAddresses([seed, neighborhoodResult.addresses])
+        } catch (err) {
+          neighborhoodError = err instanceof Error ? err.message : String(err)
+        }
+      }
+
       const result = await window.launcher.queryServers(seed)
       setServers(result.servers)
       setKnownServers(result.servers)
+
+      // Feed this refresh's ping results back into the known-servers pool so it can
+      // bump lastResponded for hits and prune anything that's gone stale.
+      if (knownPool.length > 0) {
+        const byKey = new Map(result.servers.map((s) => [serverKey(s), s]))
+        const results = knownPool.map((k) => {
+          const match = byKey.get(serverKey(k))
+          return { ip: k.ip, port: k.port, responded: match ? match.ping !== null : false }
+        })
+        window.launcher.recordKnownServerResults(results, getKnownServerRetentionDays()).catch(() => {})
+      }
 
       const now = Date.now()
       const issues: SourceIssue[] = sourceResults
         .filter((s) => s.error)
         .map((s) => ({ id: s.id, kind: s.kind, message: s.error as string }))
       if (result.masterError) issues.push({ id: 'master', kind: 'master', message: result.masterError })
+      if (neighborhoodError) issues.push({ id: 'neighborhood', kind: 'neighborhood', message: neighborhoodError })
       setSourceIssues(issues)
 
       const status: SourceStatusEntry[] = sourceResults.map((s) => ({
@@ -204,6 +239,16 @@ export default function Servers(): React.JSX.Element {
         error: result.masterError,
         checkedAt: now
       })
+      status.push({ id: 'known-pool', kind: 'known', addresses: knownPool.length, error: null, checkedAt: now })
+      if (neighborhoodResult || neighborhoodError) {
+        status.push({
+          id: 'neighborhood',
+          kind: 'neighborhood',
+          addresses: neighborhoodResult?.addresses.length ?? 0,
+          error: neighborhoodError,
+          checkedAt: now
+        })
+      }
       saveSourceStatus(status)
 
       // Diagnostic funnel (M11 follow-up): per-source contribution -> dedup -> A2S response, so a
@@ -218,13 +263,21 @@ export default function Servers(): React.JSX.Element {
         favorites: favorites.length,
         battlemetrics: battlemetricsCount,
         subscriptions: subscriptionCounts,
+        knownPool: knownPool.length,
+        neighborhood: neighborhoodResult
+          ? { probed: neighborhoodResult.probed, found: neighborhoodResult.addresses.length }
+          : neighborhoodError,
         master: { discovered: result.masterDiscoveredCount, new: result.masterNewCount, error: result.masterError },
         dedupedSeed: seed.length,
         totalQueried: result.queriedCount,
         responding: result.respondingCount
       })
       setFunnel({
-        sources: 1 /* master */ + specs.length,
+        sources:
+          1 /* master */ +
+          1 /* known pool */ +
+          specs.length +
+          (neighborhoodResult || neighborhoodError ? 1 : 0),
         addresses: result.queriedCount,
         responding: result.respondingCount
       })
@@ -525,7 +578,14 @@ export default function Servers(): React.JSX.Element {
         <div className="servers-source-issues">
           {sourceIssues.map((issue) => (
             <p key={issue.id} className="servers-source-issue">
-              {issue.kind === 'battlemetrics' ? 'BattleMetrics' : issue.kind === 'master' ? 'Master server' : issue.id}:{' '}
+              {issue.kind === 'battlemetrics'
+                ? 'BattleMetrics'
+                : issue.kind === 'master'
+                  ? 'Master server'
+                  : issue.kind === 'neighborhood'
+                    ? 'Neighborhood scan'
+                    : issue.id}
+              :{' '}
               {issue.message}
             </p>
           ))}

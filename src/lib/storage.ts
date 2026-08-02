@@ -16,6 +16,9 @@ export const SERVER_VIEW_KEY = 'cs16-server-view'
 export const LAUNCH_OPTIONS_NOTICE_DISMISSED_KEY = 'cs16-launch-options-notice-dismissed'
 export const CONDEBUG_NOTICE_DISMISSED_KEY = 'cs16-condebug-notice-dismissed'
 export const SOURCE_STATUS_KEY = 'cs16-source-status'
+export const DEFAULT_SUBSCRIPTION_SEEDED_KEY = 'cs16-default-subscription-seeded'
+export const KNOWN_SERVER_RETENTION_DAYS_KEY = 'cs16-known-server-retention-days'
+export const NEIGHBORHOOD_SCAN_ENABLED_KEY = 'cs16-neighborhood-scan-enabled'
 
 export function loadJSON<T>(key: string, fallback: T): T {
   try {

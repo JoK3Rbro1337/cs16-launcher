@@ -76,6 +76,7 @@ import { parse } from 'vdf-parser'
 import { detectSteam } from './steam-detect'
 import { isGameRunning } from './game-process'
 import { queryServer } from './server-browser'
+import { recordKnownServer } from './known-servers'
 
 export type SessionSource = 'launcher' | 'in-game'
 
@@ -246,6 +247,12 @@ function handleConnect(ip: string, port: number): void {
 
   queryServer(ip, port)
     .then((info) => {
+      // Feeds the self-growing known-servers pool (M11.3 follow-up) — only ever
+      // public addresses that actually answered A2S, regardless of whether this
+      // particular connect event is later superseded below.
+      if (addressClass === 'public' && info.ping !== null) {
+        recordKnownServer(ip, port, info.name).catch(() => {})
+      }
       if (!liveSession || liveSession.ip !== ip || liveSession.port !== port || liveSession.connectedAt !== connectedAt) {
         return // superseded by a newer connect while the query was in flight
       }

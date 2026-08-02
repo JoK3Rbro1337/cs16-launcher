@@ -7,7 +7,7 @@ import { SOURCE_STATUS_KEY, loadJSON, saveJSON } from './storage'
 
 export interface SourceStatusEntry {
   id: string
-  kind: 'master' | 'battlemetrics' | 'subscription'
+  kind: 'master' | 'battlemetrics' | 'subscription' | 'known' | 'neighborhood'
   addresses: number
   error: string | null
   checkedAt: number

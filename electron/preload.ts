@@ -3,6 +3,8 @@ import type { SteamDetectResult } from './modules/steam-detect'
 import type { LaunchOptionsCheck } from './modules/steam-launch-options'
 import type { FavoriteServer, GameServer, QueryServersResult, ServerPlayer } from './modules/server-browser'
 import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sources'
+import type { KnownServerEntry } from './modules/known-servers'
+import type { NeighborhoodScanResult } from './modules/neighborhood-scan'
 import type { BackedUpFile, BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
 import type { UpdateStatus } from './modules/updater'
@@ -27,6 +29,13 @@ const launcher = {
     ipcRenderer.invoke('servers:query-players', ip, port),
   fetchServerSources: (specs: ServerSourceSpec[]): Promise<ServerSourceResult[]> =>
     ipcRenderer.invoke('servers:fetch-sources', specs),
+  getKnownServers: (): Promise<KnownServerEntry[]> => ipcRenderer.invoke('known-servers:get'),
+  recordKnownServerResults: (
+    results: { ip: string; port: number; responded: boolean }[],
+    retentionDays: number
+  ): Promise<void> => ipcRenderer.invoke('known-servers:record-results', results, retentionDays),
+  scanNeighborhood: (known: FavoriteServer[], exclude: FavoriteServer[]): Promise<NeighborhoodScanResult> =>
+    ipcRenderer.invoke('servers:scan-neighborhood', known, exclude),
   getMapThumbnail: (mapName: string): Promise<string | null> =>
     ipcRenderer.invoke('servers:map-thumbnail', mapName),
   fetchManifest: (manifestUrl: string): Promise<ContentManifest> =>
