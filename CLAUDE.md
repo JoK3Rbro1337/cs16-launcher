@@ -2,6 +2,8 @@ Never run destructive or corruption test scenarios against the real CS 1.6 insta
 
 CDP monkeypatching of `window.launcher` (contextBridge objects) NEVER works — they are frozen; the patch fails silently and real IPC fires. This has now caused two incidents (M8, M10d). For UI verification of sync/launch flows, use an isolated harness with a mock bridge, never the live app against the real install.
 
+Before pushing any release tag (`vX.Y.Z`), always validate the electron-builder config locally first: `npx electron-builder --linux --publish never`. Two releases in a row (v0.3.0's first two attempts) failed at CI's config-validation step — before any real build ran — on issues this local command catches in seconds instead of burning a CI run. **Gotcha:** `publish.draft` (boolean) doesn't exist in electron-builder's current `GithubOptions` schema (`additionalProperties: false` rejects it outright, which cascades into the whole `publish` block failing `anyOf` validation) — the replacement is `publish.releaseType: draft | prerelease | release` (default `draft`; use `release` for an immediately-live, undrafted release). Don't reintroduce `draft` as a config key.
+
 ## Project status
 
 v0.1.0 and v0.2.0 are released (win+linux artifacts via GitHub Actions on tag push — see `.github/workflows/release.yml`, which derives the release tag from `package.json`'s version and publishes on any `v*.*.*` tag push). content-v1 and content-v2 are both published as GitHub Releases; content-v2 is the "Verified Config Archive" (see the curation convention under Roadmap's content-tasks bullet).
