@@ -134,7 +134,7 @@ export default function Settings(): React.JSX.Element {
   const [battlemetricsEnabled, setBattlemetricsEnabledState] = useState(getBattlemetricsEnabled)
   const [neighborhoodScanEnabled, setNeighborhoodScanEnabledState] = useState(getNeighborhoodScanEnabled)
   const [retentionDays, setRetentionDaysState] = useState(getKnownServerRetentionDays)
-  const [sourceStatus, setSourceStatus] = useState<SourceStatusEntry[]>(loadSourceStatus)
+  const sourceStatus = loadSourceStatus()
 
   const [backups, setBackups] = useState<BackedUpFile[] | null>(null)
   const [restoringPath, setRestoringPath] = useState<string | null>(null)

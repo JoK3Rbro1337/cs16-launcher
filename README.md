@@ -1,5 +1,8 @@
 # 1.6X Launcher
 
+**Status: active development** — usable day-to-day, but still evolving; the
+screenshots below reflect the current version, not a final design.
+
 A custom launcher for a **licensed Steam copy of Counter-Strike 1.6** — a game
 wrapper around a curated content build, with a live server browser and
 self-updates. Windows and Linux, built with Electron + React.
@@ -35,15 +38,17 @@ changed so it can restore your original files at any time.
 
 ## Screenshots
 
-<!-- TODO: fill in — 1024x640, dark theme -->
-
 | Home | Servers |
 | --- | --- |
-| _placeholder_ | _placeholder_ |
+| ![Home](docs/screenshots/Home.png) | ![Servers](docs/screenshots/Servers.png) |
 
 | Content | Settings / Sync |
 | --- | --- |
-| _placeholder_ | _placeholder_ |
+| ![Content](docs/screenshots/Content.png) | ![Settings / Sync](docs/screenshots/Settings.png) |
+
+| Server Sources |
+| --- |
+| ![Server Sources](docs/screenshots/Settings2.png) |
 
 ## Install
 

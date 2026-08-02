@@ -116,7 +116,6 @@ const MAP_LOAD_RE = /maps\/([A-Za-z0-9_-]+)_load\.cfg/g
 let emitSession: (session: LiveSession | null) => void = () => {}
 
 let watching = false
-let processPollTimer: ReturnType<typeof setTimeout> | null = null
 let tailTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Absolute character offset into the full re-decoded log text already handled — see processWindow. */
@@ -357,7 +356,7 @@ export function stopWatching(): void {
 }
 
 function scheduleProcessPoll(): void {
-  processPollTimer = setTimeout(async () => {
+  setTimeout(async () => {
     const running = await isGameRunning().catch(() => false)
     if (running && !watching) await startWatching()
     else if (!running && watching) stopWatching()
