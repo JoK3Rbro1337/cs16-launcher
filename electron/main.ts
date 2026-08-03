@@ -16,6 +16,15 @@ import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './
 import { fetchServerSources, type ServerSourceSpec } from './modules/server-sources'
 import { getKnownServers, recordQueryResults } from './modules/known-servers'
 import { scanNeighborhoods } from './modules/neighborhood-scan'
+import {
+  initNotificationPoller,
+  getNotificationState,
+  updateNotificationSettings,
+  setNotificationRules,
+  setNotificationWatchlist,
+  type NotificationRule,
+  type NotificationSettings
+} from './modules/notification-poller'
 import { getMapThumbnail } from './modules/map-thumbnails'
 import { fetchManifest, syncContent, type BuildProfile } from './modules/content-sync'
 import {
@@ -97,6 +106,14 @@ function registerIpc(): void {
     scanNeighborhoods(known, exclude)
   )
   ipcMain.handle('servers:map-thumbnail', (_e, mapName: string) => getMapThumbnail(mapName))
+  ipcMain.handle('notifications:get-state', () => getNotificationState())
+  ipcMain.handle('notifications:update-settings', (_e, partial: Partial<NotificationSettings>) =>
+    updateNotificationSettings(partial)
+  )
+  ipcMain.handle('notifications:set-rules', (_e, rules: NotificationRule[]) => setNotificationRules(rules))
+  ipcMain.handle('notifications:set-watchlist', (_e, favorites: FavoriteServer[]) =>
+    setNotificationWatchlist(favorites)
+  )
   ipcMain.handle('content:fetch-manifest', (_e, manifestUrl: string) => fetchManifest(manifestUrl))
   ipcMain.handle('content:sync', (event, manifestUrl: string, profile: BuildProfile) =>
     syncContent(manifestUrl, profile, (progress) => event.sender.send('content:progress', progress))
@@ -161,6 +178,23 @@ app.whenReady().then(() => {
       window.webContents.send('session:update', session)
     }
   })
+
+  initNotificationPoller(
+    (address) => {
+      const windows = BrowserWindow.getAllWindows()
+      for (const window of windows) {
+        if (window.isMinimized()) window.restore()
+        window.show()
+        window.focus()
+        window.webContents.send('notifications:focus-server', address)
+      }
+    },
+    (status) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('notifications:poll-status', status)
+      }
+    }
+  )
 
   registerIpc()
   createWindow()

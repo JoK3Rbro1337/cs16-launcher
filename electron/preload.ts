@@ -9,6 +9,7 @@ import type { BackedUpFile, BuildProfile, ContentManifest, SyncProgress, SyncRes
 import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
 import type { UpdateStatus } from './modules/updater'
 import type { LiveSession, SessionHistoryEntry } from './modules/session-watcher'
+import type { NotificationRule, NotificationSettings, PollStatus } from './modules/notification-poller'
 
 /**
  * Renderer-facing API. The renderer has no Node/Electron access — every
@@ -38,6 +39,24 @@ const launcher = {
     ipcRenderer.invoke('servers:scan-neighborhood', known, exclude),
   getMapThumbnail: (mapName: string): Promise<string | null> =>
     ipcRenderer.invoke('servers:map-thumbnail', mapName),
+  getNotificationState: (): Promise<{ settings: NotificationSettings; rules: NotificationRule[]; status: PollStatus }> =>
+    ipcRenderer.invoke('notifications:get-state'),
+  updateNotificationSettings: (partial: Partial<NotificationSettings>): Promise<NotificationSettings> =>
+    ipcRenderer.invoke('notifications:update-settings', partial),
+  setNotificationRules: (rules: NotificationRule[]): Promise<void> =>
+    ipcRenderer.invoke('notifications:set-rules', rules),
+  setNotificationWatchlist: (favorites: FavoriteServer[]): Promise<void> =>
+    ipcRenderer.invoke('notifications:set-watchlist', favorites),
+  onNotificationFocusServer: (callback: (address: FavoriteServer) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, address: FavoriteServer): void => callback(address)
+    ipcRenderer.on('notifications:focus-server', listener)
+    return () => ipcRenderer.removeListener('notifications:focus-server', listener)
+  },
+  onNotificationPollStatus: (callback: (status: PollStatus) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: PollStatus): void => callback(status)
+    ipcRenderer.on('notifications:poll-status', listener)
+    return () => ipcRenderer.removeListener('notifications:poll-status', listener)
+  },
   fetchManifest: (manifestUrl: string): Promise<ContentManifest> =>
     ipcRenderer.invoke('content:fetch-manifest', manifestUrl),
   syncContent: (manifestUrl: string, profile: BuildProfile): Promise<SyncResult> =>

@@ -8,10 +8,12 @@ import type {
   SyncResult
 } from '../../electron/modules/content-sync'
 import type { UpdateStatus } from '../../electron/modules/updater'
+import type { NotificationRule, NotificationSettings, PollStatus } from '../../electron/modules/notification-poller'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
 import ConfirmModal from '../components/ConfirmModal'
+import NotificationRules from '../components/NotificationRules'
 import {
   DEFAULT_SUBSCRIPTION_ID,
   getBattlemetricsEnabled,
@@ -40,6 +42,11 @@ function sourceStatusLabel(entry: SourceStatusEntry | undefined): string | null 
   const when = new Date(entry.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   if (entry.error) return `Last check (${when}): failed — ${entry.error}`
   return `Last check (${when}): ${entry.addresses} address${entry.addresses === 1 ? '' : 'es'}`
+}
+
+/** "14:32" or "—" for a null poll timestamp. */
+function pollTimeLabel(ms: number | null): string {
+  return ms === null ? '—' : new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 type SyncState = 'idle' | 'syncing' | 'done' | 'error'
@@ -136,6 +143,11 @@ export default function Settings(): React.JSX.Element {
   const [retentionDays, setRetentionDaysState] = useState(getKnownServerRetentionDays)
   const sourceStatus = loadSourceStatus()
 
+  const [notifSettings, setNotifSettings] = useState<NotificationSettings | null>(null)
+  const [notifRules, setNotifRules] = useState<NotificationRule[]>([])
+  const [pollStatus, setPollStatus] = useState<PollStatus | null>(null)
+  const [confirmNotificationsIntro, setConfirmNotificationsIntro] = useState(false)
+
   const [backups, setBackups] = useState<BackedUpFile[] | null>(null)
   const [restoringPath, setRestoringPath] = useState<string | null>(null)
   const [confirmRestoreAll, setConfirmRestoreAll] = useState(false)
@@ -169,6 +181,15 @@ export default function Settings(): React.JSX.Element {
   }
 
   useEffect(refreshBackups, [])
+
+  useEffect(() => {
+    window.launcher.getNotificationState().then(({ settings, rules, status }) => {
+      setNotifSettings(settings)
+      setNotifRules(rules)
+      setPollStatus(status)
+    })
+    return window.launcher.onNotificationPollStatus(setPollStatus)
+  }, [])
 
   useEffect(() => {
     window.launcher.getAppVersion().then(setAppVersion)
@@ -284,6 +305,50 @@ export default function Settings(): React.JSX.Element {
     if (!Number.isFinite(value) || value < 1) return
     setKnownServerRetentionDays(value)
     setRetentionDaysState(value)
+  }
+
+  async function applyNotificationSettings(partial: Partial<NotificationSettings>): Promise<void> {
+    const next = await window.launcher.updateNotificationSettings(partial)
+    setNotifSettings(next)
+  }
+
+  function handleToggleNotificationsEnabled(): void {
+    if (!notifSettings) return
+    if (!notifSettings.enabled && !notifSettings.introSeen) {
+      setConfirmNotificationsIntro(true)
+      return
+    }
+    applyNotificationSettings({ enabled: !notifSettings.enabled })
+  }
+
+  function handleConfirmNotificationsIntro(): void {
+    setConfirmNotificationsIntro(false)
+    applyNotificationSettings({ enabled: true, introSeen: true })
+  }
+
+  function handleToggleMute(): void {
+    if (!notifSettings) return
+    applyNotificationSettings({ muted: !notifSettings.muted })
+  }
+
+  function handlePollIntervalChange(value: number): void {
+    if (!Number.isFinite(value) || value < 1) return
+    applyNotificationSettings({ pollIntervalMinutes: value })
+  }
+
+  function handleToggleQuietHours(): void {
+    if (!notifSettings) return
+    applyNotificationSettings({ quietHours: { ...notifSettings.quietHours, enabled: !notifSettings.quietHours.enabled } })
+  }
+
+  function handleQuietHoursChange(field: 'from' | 'to', value: string): void {
+    if (!notifSettings) return
+    applyNotificationSettings({ quietHours: { ...notifSettings.quietHours, [field]: value } })
+  }
+
+  function handleNotificationRulesChange(rules: NotificationRule[]): void {
+    setNotifRules(rules)
+    window.launcher.setNotificationRules(rules).catch(() => {})
   }
 
   function handleAddSubscription(): void {
@@ -622,6 +687,126 @@ export default function Settings(): React.JSX.Element {
           </button>
         </div>
       </div>
+
+      <h2 className="section-header">Notifications</h2>
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">Background server notifications</p>
+            <p className="settings-row-desc">
+              Off by default. When on, periodically checks favorites + your known-servers pool while the launcher
+              is open and fires a system notification per rule below — never while the launcher is closed.
+            </p>
+            {pollStatus && (
+              <p className="server-sources-status">
+                Last poll ({pollTimeLabel(pollStatus.lastPollAt)}) · next ({pollTimeLabel(pollStatus.nextPollAt)}) ·
+                watching {pollStatus.watchedCount} favorite{pollStatus.watchedCount === 1 ? '' : 's'} + known pool
+              </p>
+            )}
+          </div>
+          <button
+            className={`toggle-switch${notifSettings?.enabled ? ' on' : ''}`}
+            role="switch"
+            aria-checked={!!notifSettings?.enabled}
+            aria-label="Background server notifications"
+            disabled={!notifSettings}
+            onClick={handleToggleNotificationsEnabled}
+          >
+            <span className="toggle-switch-thumb" />
+          </button>
+        </div>
+
+        {notifSettings?.enabled && (
+          <>
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">Mute</p>
+                <p className="settings-row-desc">Keep polling (status above stays live) but suppress notifications.</p>
+              </div>
+              <button
+                className={`toggle-switch${notifSettings.muted ? ' on' : ''}`}
+                role="switch"
+                aria-checked={notifSettings.muted}
+                aria-label="Mute notifications"
+                onClick={handleToggleMute}
+              >
+                <span className="toggle-switch-thumb" />
+              </button>
+            </div>
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">Poll interval</p>
+                <p className="settings-row-desc">Minutes between background checks (1–30).</p>
+              </div>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                className="cp-input settings-number-input"
+                value={notifSettings.pollIntervalMinutes}
+                onChange={(e) => handlePollIntervalChange(Number(e.target.value))}
+              />
+            </div>
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">Quiet hours</p>
+                <p className="settings-row-desc">No notifications between these times (still polls, still tracks state).</p>
+              </div>
+              <button
+                className={`toggle-switch${notifSettings.quietHours.enabled ? ' on' : ''}`}
+                role="switch"
+                aria-checked={notifSettings.quietHours.enabled}
+                aria-label="Quiet hours"
+                onClick={handleToggleQuietHours}
+              >
+                <span className="toggle-switch-thumb" />
+              </button>
+            </div>
+            {notifSettings.quietHours.enabled && (
+              <div className="settings-row quiet-hours-row">
+                <label className="quiet-hours-field">
+                  From
+                  <input
+                    type="time"
+                    className="cp-input"
+                    value={notifSettings.quietHours.from}
+                    onChange={(e) => handleQuietHoursChange('from', e.target.value)}
+                  />
+                </label>
+                <label className="quiet-hours-field">
+                  To
+                  <input
+                    type="time"
+                    className="cp-input"
+                    value={notifSettings.quietHours.to}
+                    onChange={(e) => handleQuietHoursChange('to', e.target.value)}
+                  />
+                </label>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {notifSettings?.enabled && (
+        <div className="settings-card">
+          <p className="settings-row-desc server-sources-hint">
+            Rules apply to every favorite + known-servers-pool address unless scoped to one server. Fires once per
+            transition (e.g. crossing a threshold), never repeatedly while it stays true.
+          </p>
+          <NotificationRules rules={notifRules} onChange={handleNotificationRulesChange} />
+        </div>
+      )}
+
+      {confirmNotificationsIntro && (
+        <ConfirmModal
+          title="Enable Background Notifications"
+          message="The launcher will periodically query your favorites and known servers while it's open, and show a system notification when a rule you define matches (e.g. a server crosses a player-count threshold). Nothing is checked while the launcher is closed. You can add rules, mute, set quiet hours, or turn this off again at any time."
+          confirmLabel="Enable"
+          onConfirm={handleConfirmNotificationsIntro}
+          onCancel={() => setConfirmNotificationsIntro(false)}
+        />
+      )}
 
       <h2 className="section-header">Preferences</h2>
       <div className="settings-card">

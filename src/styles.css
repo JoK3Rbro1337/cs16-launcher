@@ -2104,6 +2104,81 @@ body {
   color: var(--cs-text-low);
 }
 
+/* Notifications (M12) */
+
+.quiet-hours-row {
+  gap: 24px;
+  justify-content: flex-start;
+}
+
+.quiet-hours-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--cs-text-mid);
+}
+
+.quiet-hours-field .cp-input {
+  width: 110px;
+}
+
+.notification-rules-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-rules-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--cs-border);
+}
+
+.notification-rules-item:last-child {
+  border-bottom: none;
+}
+
+.notification-rules-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.notification-rules-remove {
+  padding: 6px;
+}
+
+.notification-rule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.notification-rule-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notification-rule-form-row .cp-input {
+  width: auto;
+  flex: 1;
+  min-width: 140px;
+}
+
+.notification-rule-maps-input {
+  font-family: var(--font-mono);
+}
+
 .restore-files-hint {
   padding-bottom: 8px;
 }

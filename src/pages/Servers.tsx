@@ -132,7 +132,13 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function Servers(): React.JSX.Element {
+interface ServersProps {
+  /** Set by App.tsx when a background-notification (M12) click asks the browser to jump to a server. */
+  focusServer?: FavoriteServer | null
+  onFocusServerHandled?: () => void
+}
+
+export default function Servers({ focusServer, onFocusServerHandled }: ServersProps): React.JSX.Element {
   const [favorites, setFavorites] = useState<FavoriteServer[]>(loadFavorites)
   const [servers, setServers] = useState<GameServer[]>([])
   const [addValue, setAddValue] = useState('')
@@ -313,6 +319,23 @@ export default function Servers(): React.JSX.Element {
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Keeps the main-process notification poller's watchlist (M12) in sync with
+  // favorites — fires on mount too, which is fine, App.tsx's own startup push
+  // just gets immediately superseded by this one when the tab is visited.
+  useEffect(() => {
+    window.launcher.setNotificationWatchlist(favorites).catch(() => {})
+  }, [favorites])
+
+  useEffect(() => {
+    if (!focusServer) return
+    const target = focusServer
+    window.launcher
+      .queryServer(target.ip, target.port)
+      .then((server) => openDrawer(server))
+      .finally(() => onFocusServerHandled?.())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusServer])
 
   useEffect(() => {
     const el = viewportRef.current
