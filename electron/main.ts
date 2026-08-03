@@ -34,6 +34,11 @@ import {
   commitUpdateLocalVariant
 } from './modules/local-config-variant'
 import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
+import {
+  getDesktopIntegrationStatus,
+  installDesktopEntry,
+  removeDesktopEntry
+} from './modules/linux-desktop-integration'
 
 /**
  * Must match `desktopName` in package.json (which electron-builder also uses to name the
@@ -47,6 +52,9 @@ const DESKTOP_NAME = 'com.cs16launcher.app.desktop'
 if (process.platform === 'linux') {
   app.setDesktopName(DESKTOP_NAME)
 }
+// Complements the above — gives the window/taskbar/dock a real name instead of whatever
+// Electron infers by default (previously nothing set this at all).
+app.setName('1.6X Launcher')
 
 /**
  * Wayland compositors (KWin included) require an xdg-activation token to grant a
@@ -146,6 +154,9 @@ function registerIpc(): void {
   ipcMain.handle('notifications:set-watchlist', (_e, favorites: FavoriteServer[]) =>
     setNotificationWatchlist(favorites)
   )
+  ipcMain.handle('desktop-integration:get-status', () => getDesktopIntegrationStatus())
+  ipcMain.handle('desktop-integration:install', () => installDesktopEntry())
+  ipcMain.handle('desktop-integration:remove', () => removeDesktopEntry())
   ipcMain.handle('content:fetch-manifest', (_e, manifestUrl: string) => fetchManifest(manifestUrl))
   ipcMain.handle('content:sync', (event, manifestUrl: string, profile: BuildProfile) =>
     syncContent(manifestUrl, profile, (progress) => event.sender.send('content:progress', progress))

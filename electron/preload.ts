@@ -57,6 +57,10 @@ const launcher = {
     ipcRenderer.on('notifications:poll-status', listener)
     return () => ipcRenderer.removeListener('notifications:poll-status', listener)
   },
+  getDesktopIntegrationStatus: (): Promise<{ eligible: boolean; installed: boolean }> =>
+    ipcRenderer.invoke('desktop-integration:get-status'),
+  installDesktopIntegration: (): Promise<void> => ipcRenderer.invoke('desktop-integration:install'),
+  removeDesktopIntegration: (): Promise<void> => ipcRenderer.invoke('desktop-integration:remove'),
   fetchManifest: (manifestUrl: string): Promise<ContentManifest> =>
     ipcRenderer.invoke('content:fetch-manifest', manifestUrl),
   syncContent: (manifestUrl: string, profile: BuildProfile): Promise<SyncResult> =>

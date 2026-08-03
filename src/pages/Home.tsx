@@ -13,6 +13,7 @@ import {
 import { useToast } from '../lib/toast'
 import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
 import CondebugNotice from '../components/CondebugNotice'
+import DesktopIntegrationNotice from '../components/DesktopIntegrationNotice'
 
 type PlayState = 'steam-missing' | 'update' | 'syncing' | 'launching' | 'idle'
 
@@ -212,6 +213,7 @@ export default function Home(): React.JSX.Element {
 
         {manifestUrl && <LaunchOptionsNotice className="launch-options-notice-compact" />}
         <CondebugNotice className="launch-options-notice-compact" />
+        <DesktopIntegrationNotice className="launch-options-notice-compact" />
 
         <div className="hero-play-row">
           <button

@@ -148,6 +148,9 @@ export default function Settings(): React.JSX.Element {
   const [pollStatus, setPollStatus] = useState<PollStatus | null>(null)
   const [confirmNotificationsIntro, setConfirmNotificationsIntro] = useState(false)
 
+  const [desktopIntegration, setDesktopIntegration] = useState<{ eligible: boolean; installed: boolean } | null>(null)
+  const [desktopIntegrationBusy, setDesktopIntegrationBusy] = useState(false)
+
   const [backups, setBackups] = useState<BackedUpFile[] | null>(null)
   const [restoringPath, setRestoringPath] = useState<string | null>(null)
   const [confirmRestoreAll, setConfirmRestoreAll] = useState(false)
@@ -190,6 +193,15 @@ export default function Settings(): React.JSX.Element {
     })
     return window.launcher.onNotificationPollStatus(setPollStatus)
   }, [])
+
+  function refreshDesktopIntegration(): void {
+    window.launcher
+      .getDesktopIntegrationStatus()
+      .then(setDesktopIntegration)
+      .catch(() => setDesktopIntegration(null))
+  }
+
+  useEffect(refreshDesktopIntegration, [])
 
   useEffect(() => {
     window.launcher.getAppVersion().then(setAppVersion)
@@ -349,6 +361,32 @@ export default function Settings(): React.JSX.Element {
   function handleNotificationRulesChange(rules: NotificationRule[]): void {
     setNotifRules(rules)
     window.launcher.setNotificationRules(rules).catch(() => {})
+  }
+
+  async function handleInstallDesktopIntegration(): Promise<void> {
+    setDesktopIntegrationBusy(true)
+    try {
+      await window.launcher.installDesktopIntegration()
+      pushToast('Added to your application menu', 'ok')
+      refreshDesktopIntegration()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDesktopIntegrationBusy(false)
+    }
+  }
+
+  async function handleRemoveDesktopIntegration(): Promise<void> {
+    setDesktopIntegrationBusy(true)
+    try {
+      await window.launcher.removeDesktopIntegration()
+      pushToast('Removed from your application menu', 'ok')
+      refreshDesktopIntegration()
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDesktopIntegrationBusy(false)
+    }
   }
 
   function handleAddSubscription(): void {
@@ -806,6 +844,34 @@ export default function Settings(): React.JSX.Element {
           onConfirm={handleConfirmNotificationsIntro}
           onCancel={() => setConfirmNotificationsIntro(false)}
         />
+      )}
+
+      {desktopIntegration?.eligible && (
+        <>
+          <h2 className="section-header">Desktop Integration</h2>
+          <div className="settings-card">
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">Add to application menu</p>
+                <p className="settings-row-desc">
+                  Registers a <code>.desktop</code> entry (<code>~/.local/share/applications</code>) so your
+                  desktop environment shows a proper name and icon in the taskbar/menu, and — on Wayland — can
+                  grant window-raise requests from background notifications (M12). Never done without this
+                  explicit action.
+                </p>
+              </div>
+              {desktopIntegration.installed ? (
+                <button className="cp-btn-secondary" disabled={desktopIntegrationBusy} onClick={handleRemoveDesktopIntegration}>
+                  {desktopIntegrationBusy ? 'Removing…' : 'Remove'}
+                </button>
+              ) : (
+                <button className="cp-btn-primary" disabled={desktopIntegrationBusy} onClick={handleInstallDesktopIntegration}>
+                  {desktopIntegrationBusy ? 'Adding…' : 'Add to menu'}
+                </button>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       <h2 className="section-header">Preferences</h2>
