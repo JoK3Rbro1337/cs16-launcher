@@ -35,6 +35,38 @@ import {
 } from './modules/local-config-variant'
 import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
 
+/**
+ * Must match `desktopName` in package.json (which electron-builder also uses to name the
+ * installed .desktop file and its StartupWMClass, via linux.syncDesktopName in
+ * electron-builder.yml). This is what determines the app's XDG application ID on Wayland —
+ * without a consistent value here, compositors can't associate this running window with
+ * any .desktop entry, and reject window-activation requests from things like notification
+ * clicks (M12). Must be called before 'ready'. See CLAUDE.md's Wayland-activation gotcha.
+ */
+const DESKTOP_NAME = 'com.cs16launcher.app.desktop'
+if (process.platform === 'linux') {
+  app.setDesktopName(DESKTOP_NAME)
+}
+
+/**
+ * Wayland compositors (KWin included) require an xdg-activation token to grant a
+ * self-initiated activation request; window.focus() called from our own process without
+ * one is legitimately ignored by design, not a bug — Electron's own docs note focus() may
+ * only flash the app icon on Wayland. So: always show/focus (harmless where it works,
+ * silently ignored where it doesn't), and when the window still isn't actually focused
+ * afterward, fall back to flashFrame (taskbar/urgency hint — some compositors honor it,
+ * harmless no-op elsewhere) instead of leaving the user with no visible cue at all.
+ */
+function focusOrFlagWindow(window: BrowserWindow): void {
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+  if (!window.isFocused()) {
+    window.flashFrame(true)
+    window.once('focus', () => window.flashFrame(false))
+  }
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -179,22 +211,28 @@ app.whenReady().then(() => {
     }
   })
 
-  initNotificationPoller(
-    (address) => {
-      const windows = BrowserWindow.getAllWindows()
-      for (const window of windows) {
-        if (window.isMinimized()) window.restore()
-        window.show()
-        window.focus()
+  initNotificationPoller({
+    onFocusServer: (address) => {
+      // Always push the state change (select this server / open its drawer) regardless of
+      // whether the window actually got raised — see focusOrFlagWindow's doc comment. That
+      // way the app is in the right state the moment the user switches to it themselves,
+      // even on a compositor that silently ignored the activation request.
+      for (const window of BrowserWindow.getAllWindows()) {
+        focusOrFlagWindow(window)
         window.webContents.send('notifications:focus-server', address)
       }
     },
-    (status) => {
+    onConnect: (address) => {
+      noteLauncherConnect(address.ip, address.port)
+      startSessionWatching()
+      connectToServer(address.ip, address.port).catch(() => {})
+    },
+    onPollStatus: (status) => {
       for (const window of BrowserWindow.getAllWindows()) {
         window.webContents.send('notifications:poll-status', status)
       }
     }
-  )
+  })
 
   registerIpc()
   createWindow()

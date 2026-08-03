@@ -25,6 +25,14 @@ linux:
   target:
     - AppImage
   category: Game
+  # Makes the installed .desktop filename match `desktopName` (package.json), which in
+  # turn matches the StartupWMClass this same helper writes into that file — and matches
+  # what electron/main.ts's app.setDesktopName() call reports as the app_id at runtime.
+  # Without this, the desktop entry falls back to executableName while the runtime app_id
+  # is whatever Electron infers, and a mismatch is exactly what breaks xdg-activation-based
+  # window raising (background notification click-to-focus, M12) on Wayland compositors.
+  # See CLAUDE.md's Wayland notification-activation gotcha.
+  syncDesktopName: true
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

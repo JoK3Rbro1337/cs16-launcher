@@ -62,7 +62,16 @@ let timer: ReturnType<typeof setTimeout> | null = null
 let lastPollAt: number | null = null
 let nextPollAt: number | null = null
 let onFocusServer: (address: FavoriteServer) => void = () => {}
+let onConnect: (address: FavoriteServer) => void = () => {}
 let onPollStatus: (status: PollStatus) => void = () => {}
+
+export interface NotificationPollerCallbacks {
+  /** Body click — main.ts attempts to raise the window; see its own Wayland-activation fallback. */
+  onFocusServer: (address: FavoriteServer) => void
+  /** "Connect" action button (macOS/Windows only — see sendNotification) — never needs the window raised. */
+  onConnect: (address: FavoriteServer) => void
+  onPollStatus: (status: PollStatus) => void
+}
 
 function userDataDir(): string {
   return app.getPath('userData')
@@ -129,10 +138,21 @@ async function computeTargets(): Promise<FavoriteServer[]> {
   return dedupe([watchlist, knownAddresses, ruleTargets])
 }
 
+/**
+ * `actions` (native button row) is darwin/win32 only per Electron's own typings — Linux
+ * notification backends never surface action-button clicks back to this API. It's added
+ * anyway since it's free on the platforms that do support it and gives a way to connect
+ * without ever needing the window raised (steam://connect doesn't care about window focus).
+ * The whole-notification `click` handler (onFocusServer) is what Linux users actually get;
+ * see main.ts's focusOrFlagWindow for why that alone can't reliably raise the window there.
+ */
 function sendNotification(fire: FireDecision): void {
   if (!Notification.isSupported()) return
-  const n = new Notification({ title: fire.title, body: fire.body })
+  const n = new Notification({ title: fire.title, body: fire.body, actions: [{ type: 'button', text: 'Connect' }] })
   n.on('click', () => onFocusServer(fire.address))
+  n.on('action', (_event, actionIndex) => {
+    if (actionIndex === 0) onConnect(fire.address)
+  })
   n.show()
 }
 
@@ -187,12 +207,10 @@ function restartLoopIfEnabled(): void {
   }
 }
 
-export async function initNotificationPoller(
-  focusServer: (address: FavoriteServer) => void,
-  pollStatus: (status: PollStatus) => void
-): Promise<void> {
-  onFocusServer = focusServer
-  onPollStatus = pollStatus
+export async function initNotificationPoller(callbacks: NotificationPollerCallbacks): Promise<void> {
+  onFocusServer = callbacks.onFocusServer
+  onConnect = callbacks.onConnect
+  onPollStatus = callbacks.onPollStatus
   await loadPersisted()
   restartLoopIfEnabled()
 }

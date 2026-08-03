@@ -5,6 +5,7 @@
   "author": "cs16-launcher",
   "license": "MIT",
   "main": "./out/main/main.js",
+  "desktopName": "com.cs16launcher.app.desktop",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
