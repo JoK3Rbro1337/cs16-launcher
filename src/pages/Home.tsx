@@ -1,3 +1,4 @@
+import { Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import type { BuildProfile, SyncProgress } from '../../electron/modules/content-sync'
@@ -65,6 +66,7 @@ export default function Home(): React.JSX.Element {
   const [mainSession, setMainSession] = useState<LiveSession | null>(null)
   const [liveServer, setLiveServer] = useState<GameServer | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [friendNames, setFriendNames] = useState<string[]>([])
 
   const { pushToast } = useToast()
 
@@ -115,6 +117,22 @@ export default function Home(): React.JSX.Element {
       .queryServer(target.ip, target.port)
       .then(setLiveServer)
       .catch(() => setLiveServer(null))
+  }, [target?.ip, target?.port])
+
+  // "Friends online" (M13) — same recency-windowed snapshot Servers.tsx reads, not a fresh
+  // query of its own; see player-tracking.ts's getFriendsOnline doc comment.
+  useEffect(() => {
+    if (!target) {
+      setFriendNames([])
+      return
+    }
+    window.launcher
+      .getFriendsOnline()
+      .then((entries) => {
+        const match = entries.find((e) => e.ip === target.ip && e.port === target.port)
+        setFriendNames(match?.names ?? [])
+      })
+      .catch(() => setFriendNames([]))
   }, [target?.ip, target?.port])
 
   const installed = detection !== 'loading' && detection !== 'error' && detection.installed
@@ -261,6 +279,12 @@ export default function Home(): React.JSX.Element {
               {target && (
                 <span className={`quickconnect-source-badge quickconnect-source-badge-${target.source}`}>
                   {target.source === 'launcher' ? 'Launcher' : 'In-game'}
+                </span>
+              )}
+              {friendNames.length > 0 && (
+                <span className="friends-badge" title={`Known online: ${friendNames.join(', ')}`}>
+                  <Users size={11} />
+                  {friendNames.length}
                 </span>
               )}
             </p>

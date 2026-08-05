@@ -14,7 +14,15 @@ import {
 } from './modules/session-watcher'
 import { queryServers, queryServer, queryPlayers, type FavoriteServer } from './modules/server-browser'
 import { fetchServerSources, type ServerSourceSpec } from './modules/server-sources'
-import { getKnownServers, recordQueryResults } from './modules/known-servers'
+import { getKnownServers, recordQueryResults, importKnownServers, type KnownServerEntry } from './modules/known-servers'
+import {
+  getKnownPlayers,
+  setPlayerKnown,
+  getFriendsOnline,
+  importKnownPlayers,
+  recordPlayerSightings,
+  type KnownPlayer
+} from './modules/player-tracking'
 import { scanNeighborhoods } from './modules/neighborhood-scan'
 import {
   initNotificationPoller,
@@ -31,8 +39,11 @@ import {
   ensureLocalVariant,
   loadLocalVariant,
   previewUpdateLocalVariant,
-  commitUpdateLocalVariant
+  commitUpdateLocalVariant,
+  importLocalVariant,
+  type LocalVariantSnapshot
 } from './modules/local-config-variant'
+import { exportProfile, importProfileFile } from './modules/profile'
 import { checkForUpdates, downloadUpdate, initUpdater, installUpdate } from './modules/updater'
 import {
   getDesktopIntegrationStatus,
@@ -134,7 +145,13 @@ function registerIpc(): void {
   ipcMain.handle('launch:fix-steam', (_e, steamFound: boolean) => openSteamFix(steamFound))
   ipcMain.handle('servers:query', (_e, favorites: FavoriteServer[]) => queryServers(favorites))
   ipcMain.handle('servers:query-one', (_e, ip: string, port: number) => queryServer(ip, port))
-  ipcMain.handle('servers:query-players', (_e, ip: string, port: number) => queryPlayers(ip, port))
+  ipcMain.handle('servers:query-players', async (_e, ip: string, port: number) => {
+    const players = await queryPlayers(ip, port)
+    // Feeds nickname tracking (M13) — this is the drawer's own on-demand query, not an
+    // extra one; see player-tracking.ts's module doc for why this is a natural choke point.
+    recordPlayerSightings(ip, port, players.map((p) => p.name)).catch(() => {})
+    return players
+  })
   ipcMain.handle('servers:fetch-sources', (_e, specs: ServerSourceSpec[]) => fetchServerSources(specs))
   ipcMain.handle('known-servers:get', () => getKnownServers())
   ipcMain.handle(
@@ -144,6 +161,17 @@ function registerIpc(): void {
   )
   ipcMain.handle('servers:scan-neighborhood', (_e, known: FavoriteServer[], exclude: FavoriteServer[]) =>
     scanNeighborhoods(known, exclude)
+  )
+  ipcMain.handle('known-servers:import', (_e, entries: KnownServerEntry[], mode: 'merge' | 'replace') =>
+    importKnownServers(entries, mode)
+  )
+  ipcMain.handle('player-tracking:get-known-players', () => getKnownPlayers())
+  ipcMain.handle('player-tracking:set-known', (_e, name: string, known: boolean, note: string) =>
+    setPlayerKnown(name, known, note)
+  )
+  ipcMain.handle('player-tracking:get-friends-online', () => getFriendsOnline())
+  ipcMain.handle('player-tracking:import-known-players', (_e, entries: KnownPlayer[], mode: 'merge' | 'replace') =>
+    importKnownPlayers(entries, mode)
   )
   ipcMain.handle('servers:map-thumbnail', (_e, mapName: string) => getMapThumbnail(mapName))
   ipcMain.handle('notifications:get-state', () => getNotificationState())
@@ -168,6 +196,15 @@ function registerIpc(): void {
   ipcMain.handle('config:list-backups', () => listBackups())
   ipcMain.handle('config:restore-backup', (_e, relPath: string) => restoreBackup(relPath))
   ipcMain.handle('config:restore-all-backups', () => restoreAllBackups())
+  ipcMain.handle(
+    'config:import-local-variant',
+    (_e, snapshot: LocalVariantSnapshot | null, mode: 'merge' | 'replace') => importLocalVariant(snapshot, mode)
+  )
+
+  ipcMain.handle('profile:export', (event, data: unknown) =>
+    exportProfile(BrowserWindow.fromWebContents(event.sender), data)
+  )
+  ipcMain.handle('profile:import-file', (event) => importProfileFile(BrowserWindow.fromWebContents(event.sender)))
 
   ipcMain.handle('updater:check', () => checkForUpdates())
   ipcMain.handle('updater:download', () => downloadUpdate())

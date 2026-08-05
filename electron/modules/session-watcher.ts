@@ -75,8 +75,9 @@ import { app } from 'electron'
 import { parse } from 'vdf-parser'
 import { detectSteam } from './steam-detect'
 import { isGameRunning } from './game-process'
-import { queryServer } from './server-browser'
+import { queryServer, queryPlayers } from './server-browser'
 import { recordKnownServer } from './known-servers'
+import { recordPlayerSightings } from './player-tracking'
 
 export type SessionSource = 'launcher' | 'in-game'
 
@@ -261,6 +262,14 @@ function handleConnect(ip: string, port: number): void {
         persistLastSession(liveSession).catch(() => {})
       }
     })
+    .catch(() => {})
+
+  // Nickname tracking (M13): one extra A2S_PLAYER query per connect event, not a poll — see
+  // player-tracking.ts's module doc for why this is an acceptable place to add it. Loopback is
+  // already filtered out above; private LAN is still tracked here (unlike the known-servers
+  // pool) since a LAN session is exactly where you'd expect to see people you actually know.
+  queryPlayers(ip, port)
+    .then((players) => recordPlayerSightings(ip, port, players.map((p) => p.name)))
     .catch(() => {})
 }
 

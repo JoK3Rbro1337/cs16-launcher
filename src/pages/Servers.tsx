@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Crosshair, Info, LayoutGrid, List, Lock, RotateCw, Search, TriangleAlert, X } from 'lucide-react'
+import { Crosshair, Info, LayoutGrid, List, Lock, RotateCw, Search, TriangleAlert, UserCheck, Users, X } from 'lucide-react'
 import type { FavoriteServer, GameServer, ServerPlayer } from '../../electron/modules/server-browser'
+import type { KnownPlayer } from '../../electron/modules/player-tracking'
 import { FAVORITES_KEY, LAST_SERVER_KEY, SERVER_VIEW_KEY, saveJSON } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { setKnownServers } from '../lib/serverListStore'
@@ -167,6 +168,8 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
   const [funnel, setFunnel] = useState<FunnelSummary | null>(null)
   const [sourceIssues, setSourceIssues] = useState<SourceIssue[]>([])
   const [retryingKeys, setRetryingKeys] = useState<Set<string>>(new Set())
+  const [knownPlayers, setKnownPlayers] = useState<KnownPlayer[]>([])
+  const [friendsOnline, setFriendsOnline] = useState<Map<string, string[]>>(new Map())
 
   const searchRef = useRef<HTMLInputElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -292,6 +295,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
     } finally {
       setLoading(false)
       setFirstLoad(false)
+      refreshFriendsOnline()
     }
   }
 
@@ -315,8 +319,24 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
     setDrawerServer(server)
   }
 
+  function refreshKnownPlayers(): void {
+    window.launcher.getKnownPlayers().then(setKnownPlayers).catch(() => {})
+  }
+
+  // "Friends online" (M13) — a recency-windowed snapshot from whatever A2S_PLAYER queries have
+  // already happened (drawer opens, connects, the notification poller's tick when enabled), not
+  // a live query of every row. See player-tracking.ts's getFriendsOnline doc comment.
+  function refreshFriendsOnline(): void {
+    window.launcher
+      .getFriendsOnline()
+      .then((entries) => setFriendsOnline(new Map(entries.map((e) => [serverKey(e), e.names]))))
+      .catch(() => {})
+  }
+
   useEffect(() => {
     refresh()
+    refreshKnownPlayers()
+    refreshFriendsOnline()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -390,11 +410,21 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
     setPlayers('loading')
     window.launcher
       .queryPlayers(drawerServer.ip, drawerServer.port)
-      .then(setPlayers)
+      .then((result) => {
+        setPlayers(result)
+        refreshFriendsOnline()
+      })
       .catch(() => setPlayers('error'))
   }, [drawerServer])
 
   const favKeys = useMemo(() => new Set(favorites.map(serverKey)), [favorites])
+  const knownPlayerNames = useMemo(() => new Set(knownPlayers.map((p) => p.name)), [knownPlayers])
+
+  async function handleTogglePlayerKnown(name: string): Promise<void> {
+    const next = await window.launcher.setPlayerKnown(name, !knownPlayerNames.has(name), '')
+    setKnownPlayers(next)
+    refreshFriendsOnline()
+  }
 
   const mapOptions = useMemo(() => {
     const set = new Set(servers.map((s) => s.map).filter((m) => m))
@@ -646,6 +676,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
           <button className="col-sort col-sort-right" onClick={() => toggleSort('ping')}>
             Ping{sortKey === 'ping' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
           </button>
+          <span className="col-friends" />
           <span className="col-lock" />
           <span className="col-info" />
         </div>
@@ -750,6 +781,14 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                       `${server.ping} ms`
                     )}
                   </span>
+                  <span className="row-friends">
+                    {friendsOnline.has(key) && (
+                      <span className="friends-badge" title={`Known online: ${friendsOnline.get(key)?.join(', ')}`}>
+                        <Users size={11} />
+                        {friendsOnline.get(key)?.length}
+                      </span>
+                    )}
+                  </span>
                   <span className="row-lock">{server.locked && <Lock size={12} />}</span>
                   <button
                     className="row-info"
@@ -819,6 +858,15 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                     {server.locked && (
                       <span className="server-card-lock">
                         <Lock size={12} />
+                      </span>
+                    )}
+                    {friendsOnline.has(key) && (
+                      <span
+                        className="server-card-friends"
+                        title={`Known online: ${friendsOnline.get(key)?.join(', ')}`}
+                      >
+                        <Users size={11} />
+                        {friendsOnline.get(key)?.length}
                       </span>
                     )}
                   </div>
@@ -941,6 +989,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
               </button>
             </div>
             <h3 className="server-drawer-subhead">Players</h3>
+            <p className="drawer-privacy-note">Nicknames seen here are tracked locally only — never uploaded.</p>
             {players === 'loading' && <p className="muted">Querying players…</p>}
             {players === 'error' && <p className="muted">Player list unavailable.</p>}
             {Array.isArray(players) && players.length === 0 && <p className="muted">No players connected.</p>}
@@ -949,13 +998,24 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                 {players
                   .slice()
                   .sort((a, b) => b.score - a.score)
-                  .map((p, i) => (
-                    <li key={i}>
-                      <span className="player-name">{p.name || 'unconnected'}</span>
-                      <span className="player-score">{p.score}</span>
-                      <span className="player-duration">{formatDuration(p.duration)}</span>
-                    </li>
-                  ))}
+                  .map((p, i) => {
+                    const known = p.name.length > 0 && knownPlayerNames.has(p.name)
+                    return (
+                      <li key={i} className={known ? 'known-player' : undefined}>
+                        <button
+                          className={`player-known-toggle${known ? ' active' : ''}`}
+                          disabled={!p.name}
+                          title={known ? 'Forget known player' : 'Mark as known player'}
+                          onClick={() => handleTogglePlayerKnown(p.name)}
+                        >
+                          <UserCheck size={12} />
+                        </button>
+                        <span className="player-name">{p.name || 'unconnected'}</span>
+                        <span className="player-score">{p.score}</span>
+                        <span className="player-duration">{formatDuration(p.duration)}</span>
+                      </li>
+                    )
+                  })}
               </ul>
             )}
           </>

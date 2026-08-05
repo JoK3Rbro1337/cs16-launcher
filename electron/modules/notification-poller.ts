@@ -18,13 +18,21 @@
  * (known-servers.ts), so no push is needed for it. Any address referenced
  * by an enabled server-scoped rule is also polled even if it's in neither
  * list, so a per-server rule for a non-favorite address still works.
+ *
+ * Each tick also does one A2S_PLAYER query per target alongside the existing
+ * A2S_INFO one, feeding player-tracking.ts's nickname sightings (M13) — this
+ * rides the poller's already-scheduled targets/cadence rather than adding a
+ * new polling loop, per the "friends online" feature's own constraint of not
+ * adding load beyond what this poller already does. A target that doesn't
+ * answer A2S_PLAYER is silently skipped, same as an unreachable A2S_INFO.
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, Notification } from 'electron'
-import { queryServer, type FavoriteServer, type GameServer } from './server-browser'
+import { queryServer, queryPlayers, type FavoriteServer, type GameServer } from './server-browser'
 import { getKnownServers } from './known-servers'
+import { recordPlayerSightings } from './player-tracking'
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   addressKey,
@@ -177,10 +185,19 @@ function scheduleNext(): void {
   emitStatus()
 }
 
+async function pollTarget(target: FavoriteServer): Promise<GameServer> {
+  const server = await queryServer(target.ip, target.port)
+  // Best-effort, piggybacked on this same target/tick — see module doc comment.
+  queryPlayers(target.ip, target.port)
+    .then((players) => recordPlayerSightings(target.ip, target.port, players.map((p) => p.name)))
+    .catch(() => {})
+  return server
+}
+
 async function pollTick(): Promise<void> {
   if (!settings.enabled) return
   const targets = await computeTargets()
-  const results: GameServer[] = targets.length > 0 ? await mapPool(targets, POLL_CONCURRENCY, (t) => queryServer(t.ip, t.port)) : []
+  const results: GameServer[] = targets.length > 0 ? await mapPool(targets, POLL_CONCURRENCY, pollTarget) : []
   const now = Date.now()
   const suppressed = settings.muted || isQuietHours(settings.quietHours, new Date(now))
 

@@ -96,6 +96,32 @@ export async function recordKnownServer(ip: string, port: number, name: string |
  * entries get `lastResponded` bumped to now; entries that haven't answered
  * within `retentionDays` are dropped.
  */
+/**
+ * Import for profile restore (M13). 'merge' unions by address, keeping whichever side's
+ * entry has the more recent lastSeen — this is measured data (not user-authored intent
+ * like a notification rule), so preferring freshness rather than "always keep local" is
+ * the more useful merge behavior. 'replace' adopts the imported list wholesale.
+ */
+export async function importKnownServers(
+  imported: KnownServerEntry[],
+  mode: 'merge' | 'replace'
+): Promise<KnownServerEntry[]> {
+  if (mode === 'replace') {
+    await save(imported)
+    return imported
+  }
+  const existing = await load()
+  const byKey = new Map(existing.map((e) => [addressKey(e.ip, e.port), e]))
+  for (const entry of imported) {
+    const key = addressKey(entry.ip, entry.port)
+    const current = byKey.get(key)
+    if (!current || entry.lastSeen > current.lastSeen) byKey.set(key, entry)
+  }
+  const next = Array.from(byKey.values())
+  await save(next)
+  return next
+}
+
 export async function recordQueryResults(
   results: { ip: string; port: number; responded: boolean }[],
   retentionDays: number = DEFAULT_RETENTION_DAYS

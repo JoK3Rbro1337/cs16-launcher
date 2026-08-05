@@ -193,6 +193,35 @@ export async function previewUpdateLocalVariant(): Promise<UpdatePreview> {
   return { hasSnapshot: existing !== null, changedLines, configCfgFound: true }
 }
 
+/**
+ * Import for profile restore (M13). The snapshot is untrusted here (it came from a file on
+ * disk, not straight from this machine's config.cfg), so its body is re-sanitized rather than
+ * trusted as-is — defense in depth against a tampered/hand-edited export smuggling a
+ * connect/exec/alias/rcon line back in. 'merge' only adopts the import if no local snapshot
+ * exists yet (never clobbers one the player already has); 'replace' overwrites with the
+ * imported snapshot. A null `imported` (the exported profile never had one) is always a
+ * no-op in both modes — nothing to import, and there's no reason "replace" should ever
+ * delete a snapshot the player has locally just because the file they're importing lacks one.
+ */
+export async function importLocalVariant(
+  imported: LocalVariantSnapshot | null,
+  mode: 'merge' | 'replace'
+): Promise<LocalVariantSnapshot | null> {
+  const existing = await loadLocalVariant()
+  if (!imported) return existing
+  if (mode === 'merge' && existing) return existing
+  const { sanitized, strippedCount } = sanitizeConfigCfg(imported.body)
+  const snapshot: LocalVariantSnapshot = {
+    label: imported.label || 'My Config',
+    createdAt: imported.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    body: sanitized,
+    strippedCount
+  }
+  await saveLocalVariant(snapshot)
+  return snapshot
+}
+
 /** Re-reads the live config.cfg and overwrites the stored snapshot. */
 export async function commitUpdateLocalVariant(): Promise<LocalVariantSnapshot> {
   const raw = await readGameConfigCfg()

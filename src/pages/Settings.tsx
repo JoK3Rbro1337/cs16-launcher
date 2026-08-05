@@ -9,11 +9,14 @@ import type {
 } from '../../electron/modules/content-sync'
 import type { UpdateStatus } from '../../electron/modules/updater'
 import type { NotificationRule, NotificationSettings, PollStatus } from '../../electron/modules/notification-poller'
+import type { KnownPlayer } from '../../electron/modules/player-tracking'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
+import { applyProfile, gatherProfile, isLauncherProfile, summarizeProfile, type ImportMode, type LauncherProfile } from '../lib/profile'
 import ConfirmModal from '../components/ConfirmModal'
 import NotificationRules from '../components/NotificationRules'
+import ProfileImportModal from '../components/ProfileImportModal'
 import {
   DEFAULT_SUBSCRIPTION_ID,
   getBattlemetricsEnabled,
@@ -156,6 +159,14 @@ export default function Settings(): React.JSX.Element {
   const [confirmRestoreAll, setConfirmRestoreAll] = useState(false)
   const [restoringAll, setRestoringAll] = useState(false)
 
+  const [knownPlayers, setKnownPlayers] = useState<KnownPlayer[]>([])
+  const [editingNote, setEditingNote] = useState<string | null>(null)
+  const [noteDraft, setNoteDraft] = useState('')
+
+  const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [pendingImport, setPendingImport] = useState<LauncherProfile | null>(null)
+
   useEffect(() => {
     return window.launcher.onSyncProgress((p) => {
       setProgress(p)
@@ -184,6 +195,12 @@ export default function Settings(): React.JSX.Element {
   }
 
   useEffect(refreshBackups, [])
+
+  function refreshKnownPlayers(): void {
+    window.launcher.getKnownPlayers().then(setKnownPlayers).catch(() => {})
+  }
+
+  useEffect(refreshKnownPlayers, [])
 
   useEffect(() => {
     window.launcher.getNotificationState().then(({ settings, rules, status }) => {
@@ -410,6 +427,70 @@ export default function Settings(): React.JSX.Element {
     const next = subscriptions.filter((s) => s.id !== id)
     setSubscriptions(next)
     saveSubscriptions(next)
+  }
+
+  async function handleForgetPlayer(name: string): Promise<void> {
+    const next = await window.launcher.setPlayerKnown(name, false, '')
+    setKnownPlayers(next)
+  }
+
+  function handleStartEditNote(player: KnownPlayer): void {
+    setEditingNote(player.name)
+    setNoteDraft(player.note)
+  }
+
+  async function handleSaveNote(name: string): Promise<void> {
+    const next = await window.launcher.setPlayerKnown(name, true, noteDraft)
+    setKnownPlayers(next)
+    setEditingNote(null)
+  }
+
+  async function handleExportProfile(): Promise<void> {
+    setExporting(true)
+    try {
+      const profile = await gatherProfile()
+      const result = await window.launcher.exportProfile(profile)
+      if (!result.canceled) pushToast('Profile exported', 'ok')
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  async function handleImportProfileClick(): Promise<void> {
+    setImporting(true)
+    try {
+      const result = await window.launcher.importProfileFile()
+      if (result.canceled) return
+      if (!isLauncherProfile(result.data)) {
+        pushToast("That file isn't a 1.6X Launcher profile")
+        return
+      }
+      setPendingImport(result.data)
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function handleConfirmImport(mode: ImportMode): Promise<void> {
+    if (!pendingImport) return
+    try {
+      await applyProfile(pendingImport, mode)
+      pushToast(`Profile imported (${mode})`, 'ok')
+      refreshKnownPlayers()
+      window.launcher.getNotificationState().then(({ settings, rules, status }) => {
+        setNotifSettings(settings)
+        setNotifRules(rules)
+        setPollStatus(status)
+      })
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPendingImport(null)
+    }
   }
 
   const pct = progress && progress.totalBytes > 0 ? progress.downloadedBytes / progress.totalBytes : state === 'done' ? 1 : 0
@@ -725,6 +806,84 @@ export default function Settings(): React.JSX.Element {
           </button>
         </div>
       </div>
+
+      <h2 className="section-header">Known Players</h2>
+      <div className="settings-card">
+        <p className="settings-row-desc server-sources-hint">
+          Nicknames you've marked known/friend from a server's player list. Tracked and stored locally only —
+          nothing here is ever uploaded. Marked players are highlighted in the server-info drawer and light up a
+          "known online" badge on the server browser and Home when recently seen.
+        </p>
+        {knownPlayers.length === 0 ? (
+          <p className="muted">No known players yet — mark one from a server's player list.</p>
+        ) : (
+          <ul className="server-sources-list">
+            {knownPlayers
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((player) => (
+                <li key={player.name} className="server-sources-item">
+                  <div>
+                    <span className="server-sources-url">{player.name}</span>
+                    {editingNote === player.name ? (
+                      <div className="servers-add-row known-player-note-edit">
+                        <input
+                          type="text"
+                          className="cp-input servers-add-input"
+                          placeholder="Optional note"
+                          value={noteDraft}
+                          autoFocus
+                          onChange={(e) => setNoteDraft(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveNote(player.name)}
+                        />
+                        <button className="cp-btn-secondary" onClick={() => handleSaveNote(player.name)}>
+                          Save
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="server-sources-status known-player-note" onClick={() => handleStartEditNote(player)}>
+                        {player.note || 'Add a note…'}
+                      </p>
+                    )}
+                  </div>
+                  <button className="cp-btn-secondary" onClick={() => handleForgetPlayer(player.name)}>
+                    Forget
+                  </button>
+                </li>
+              ))}
+          </ul>
+        )}
+      </div>
+
+      <h2 className="section-header">Profile</h2>
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">Export / import profile</p>
+            <p className="settings-row-desc">
+              A single JSON file with your favorites, server sources, known servers, known players, notification
+              rules and settings, content selections, and your local My Config snapshot — everything needed to
+              carry your setup to another install.
+            </p>
+          </div>
+          <div className="profile-actions">
+            <button className="cp-btn-secondary" disabled={exporting} onClick={handleExportProfile}>
+              {exporting ? 'Exporting…' : 'Export…'}
+            </button>
+            <button className="cp-btn-secondary" disabled={importing} onClick={handleImportProfileClick}>
+              {importing ? 'Reading…' : 'Import…'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {pendingImport && (
+        <ProfileImportModal
+          summary={summarizeProfile(pendingImport)}
+          onConfirm={handleConfirmImport}
+          onCancel={() => setPendingImport(null)}
+        />
+      )}
 
       <h2 className="section-header">Notifications</h2>
       <div className="settings-card">

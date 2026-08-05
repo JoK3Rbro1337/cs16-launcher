@@ -4,6 +4,7 @@ import type { LaunchOptionsCheck } from './modules/steam-launch-options'
 import type { FavoriteServer, GameServer, QueryServersResult, ServerPlayer } from './modules/server-browser'
 import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sources'
 import type { KnownServerEntry } from './modules/known-servers'
+import type { KnownPlayer, FriendsOnlineEntry } from './modules/player-tracking'
 import type { NeighborhoodScanResult } from './modules/neighborhood-scan'
 import type { BackedUpFile, BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
@@ -37,6 +38,14 @@ const launcher = {
   ): Promise<void> => ipcRenderer.invoke('known-servers:record-results', results, retentionDays),
   scanNeighborhood: (known: FavoriteServer[], exclude: FavoriteServer[]): Promise<NeighborhoodScanResult> =>
     ipcRenderer.invoke('servers:scan-neighborhood', known, exclude),
+  importKnownServers: (entries: KnownServerEntry[], mode: 'merge' | 'replace'): Promise<KnownServerEntry[]> =>
+    ipcRenderer.invoke('known-servers:import', entries, mode),
+  getKnownPlayers: (): Promise<KnownPlayer[]> => ipcRenderer.invoke('player-tracking:get-known-players'),
+  setPlayerKnown: (name: string, known: boolean, note: string): Promise<KnownPlayer[]> =>
+    ipcRenderer.invoke('player-tracking:set-known', name, known, note),
+  getFriendsOnline: (): Promise<FriendsOnlineEntry[]> => ipcRenderer.invoke('player-tracking:get-friends-online'),
+  importKnownPlayers: (entries: KnownPlayer[], mode: 'merge' | 'replace'): Promise<KnownPlayer[]> =>
+    ipcRenderer.invoke('player-tracking:import-known-players', entries, mode),
   getMapThumbnail: (mapName: string): Promise<string | null> =>
     ipcRenderer.invoke('servers:map-thumbnail', mapName),
   getNotificationState: (): Promise<{ settings: NotificationSettings; rules: NotificationRule[]; status: PollStatus }> =>
@@ -82,6 +91,13 @@ const launcher = {
   listBackups: (): Promise<BackedUpFile[]> => ipcRenderer.invoke('config:list-backups'),
   restoreBackup: (relPath: string): Promise<void> => ipcRenderer.invoke('config:restore-backup', relPath),
   restoreAllBackups: (): Promise<{ restored: string[] }> => ipcRenderer.invoke('config:restore-all-backups'),
+  importLocalConfigVariant: (
+    snapshot: LocalVariantSnapshot | null,
+    mode: 'merge' | 'replace'
+  ): Promise<LocalVariantSnapshot | null> => ipcRenderer.invoke('config:import-local-variant', snapshot, mode),
+  exportProfile: (data: unknown): Promise<{ canceled: boolean }> => ipcRenderer.invoke('profile:export', data),
+  importProfileFile: (): Promise<{ canceled: boolean; data?: unknown }> =>
+    ipcRenderer.invoke('profile:import-file'),
   getLastSession: (): Promise<LiveSession | null> => ipcRenderer.invoke('session:get-last'),
   getSessionHistory: (): Promise<SessionHistoryEntry[]> => ipcRenderer.invoke('session:get-history'),
   onSessionUpdate: (callback: (session: LiveSession | null) => void): (() => void) => {
