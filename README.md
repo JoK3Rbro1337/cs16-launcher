@@ -31,6 +31,22 @@ changed so it can restore your original files at any time.
   everything outside that block is left untouched.
 - **Self-updates** — the launcher updates itself via GitHub Releases
   (`electron-updater`), independently of content-pack versioning.
+- **Background notifications** — opt-in polling of your favorite servers with
+  rules for player-count thresholds, map matches, and quiet hours, so you can
+  get notified when a favorite fills up without keeping the app in the
+  foreground.
+- **Desktop integration (Linux)** — an opt-in, one-click action that installs
+  a proper `.desktop` entry for the AppImage, so notification clicks reliably
+  raise and focus the launcher window under Wayland compositors.
+- **Nickname tracking & friends online** — locally tracks player nicknames
+  seen on servers you query or connect to, lets you mark any nickname as
+  known with a note, and surfaces a "friends online" badge on the server
+  browser and Home when a known player is currently on a server. Purely
+  local — nothing is ever uploaded.
+- **Profile export/import** — back up or move your whole setup (favorites,
+  known servers, known players, notification rules, content selections, and
+  your local config snapshot) as a single JSON file, with a merge-or-replace
+  choice on import.
 - **Headshot design system** — a from-scratch dark UI: an olive-accent token
   system, a live content-sync screen (per-file progress, ETA, verify/repair),
   a `Ctrl+K` command palette, and toasts — no legacy styling left over from
