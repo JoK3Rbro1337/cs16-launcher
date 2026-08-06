@@ -2,11 +2,14 @@ import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { NotificationRule, RuleType } from '../../electron/modules/notification-poller'
 import type { FavoriteServer } from '../../electron/modules/server-browser'
+import { useT, type Messages } from '../lib/i18n'
 
-const TYPE_LABELS: Record<RuleType, string> = {
-  'player-threshold': 'Player count threshold',
-  'empty-to-active': 'Empty → active',
-  'map-match': 'Map appears'
+function typeLabels(t: Messages): Record<RuleType, string> {
+  return {
+    'player-threshold': t.notificationRules.typePlayerThreshold,
+    'empty-to-active': t.notificationRules.typeEmptyToActive,
+    'map-match': t.notificationRules.typeMapMatch
+  }
 }
 
 /** Parses "ip:port", same convention as Servers.tsx's own address input. */
@@ -19,19 +22,25 @@ function parseAddress(value: string): FavoriteServer | null {
   return { ip, port }
 }
 
-function ruleSummary(rule: NotificationRule): string {
+function ruleSummary(t: Messages, rule: NotificationRule): string {
   switch (rule.type) {
     case 'player-threshold':
-      return `${rule.threshold ?? '?'}+ players`
+      return t.notificationRules.summaryThreshold(rule.threshold ?? '?')
     case 'empty-to-active':
-      return 'Goes from empty to active'
+      return t.notificationRules.summaryEmptyToActive
     case 'map-match':
-      return rule.maps.length > 0 ? `Map is ${rule.maps.join(', ')}` : 'Map is (none set)'
+      return rule.maps.length > 0
+        ? t.notificationRules.summaryMapMatch(rule.maps.join(', '))
+        : t.notificationRules.summaryMapMatchUnset
   }
 }
 
-function ruleTarget(rule: NotificationRule): string {
-  return rule.scope === 'global' ? 'All watched servers' : rule.target ? `${rule.target.ip}:${rule.target.port}` : 'Unknown server'
+function ruleTarget(t: Messages, rule: NotificationRule): string {
+  return rule.scope === 'global'
+    ? t.notificationRules.targetAll
+    : rule.target
+      ? `${rule.target.ip}:${rule.target.port}`
+      : t.notificationRules.targetUnknown
 }
 
 export default function NotificationRules({
@@ -41,6 +50,8 @@ export default function NotificationRules({
   rules: NotificationRule[]
   onChange: (rules: NotificationRule[]) => void
 }): React.JSX.Element {
+  const t = useT()
+  const TYPE_LABELS = typeLabels(t)
   const [scope, setScope] = useState<'global' | 'server'>('global')
   const [addressInput, setAddressInput] = useState('')
   const [type, setType] = useState<RuleType>('player-threshold')
@@ -53,12 +64,12 @@ export default function NotificationRules({
     if (scope === 'server') {
       target = parseAddress(addressInput)
       if (!target) {
-        setError('Enter the server address as ip:port')
+        setError(t.notificationRules.errorAddress)
         return
       }
     }
     if (type === 'map-match' && mapsInput.trim().length === 0) {
-      setError('Enter at least one map name')
+      setError(t.notificationRules.errorMaps)
       return
     }
 
@@ -94,15 +105,15 @@ export default function NotificationRules({
   return (
     <div className="notification-rules">
       {rules.length === 0 ? (
-        <p className="muted">No rules yet — add one below.</p>
+        <p className="muted">{t.notificationRules.empty}</p>
       ) : (
         <ul className="notification-rules-list">
           {rules.map((rule) => (
             <li key={rule.id} className="notification-rules-item">
               <div>
-                <p className="settings-row-label">{ruleSummary(rule)}</p>
+                <p className="settings-row-label">{ruleSummary(t, rule)}</p>
                 <p className="settings-row-desc">
-                  {TYPE_LABELS[rule.type]} · {ruleTarget(rule)}
+                  {TYPE_LABELS[rule.type]} · {ruleTarget(t, rule)}
                 </p>
               </div>
               <div className="notification-rules-item-actions">
@@ -110,7 +121,7 @@ export default function NotificationRules({
                   className={`toggle-switch${rule.enabled ? ' on' : ''}`}
                   role="switch"
                   aria-checked={rule.enabled}
-                  aria-label={`Enable rule: ${ruleSummary(rule)}`}
+                  aria-label={t.notificationRules.enableRuleAriaLabel(ruleSummary(t, rule))}
                   onClick={() => handleToggle(rule.id)}
                 >
                   <span className="toggle-switch-thumb" />
@@ -118,7 +129,7 @@ export default function NotificationRules({
                 <button
                   className="cp-btn-secondary notification-rules-remove"
                   onClick={() => handleRemove(rule.id)}
-                  title="Remove rule"
+                  title={t.notificationRules.removeRule}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -131,22 +142,22 @@ export default function NotificationRules({
       <div className="notification-rule-form">
         <div className="notification-rule-form-row">
           <select className="cp-input" value={scope} onChange={(e) => setScope(e.target.value as 'global' | 'server')}>
-            <option value="global">All watched servers</option>
-            <option value="server">Specific server…</option>
+            <option value="global">{t.notificationRules.scopeAll}</option>
+            <option value="server">{t.notificationRules.scopeServer}</option>
           </select>
           {scope === 'server' && (
             <input
               type="text"
               className="cp-input"
-              placeholder="ip:port"
+              placeholder={t.notificationRules.addressPlaceholder}
               value={addressInput}
               onChange={(e) => setAddressInput(e.target.value)}
             />
           )}
           <select className="cp-input" value={type} onChange={(e) => setType(e.target.value as RuleType)}>
-            <option value="player-threshold">Player count threshold</option>
-            <option value="empty-to-active">Goes from empty to active</option>
-            <option value="map-match">Map appears</option>
+            <option value="player-threshold">{t.notificationRules.typePlayerThreshold}</option>
+            <option value="empty-to-active">{t.notificationRules.summaryEmptyToActive}</option>
+            <option value="map-match">{t.notificationRules.typeMapMatch}</option>
           </select>
         </div>
         <div className="notification-rule-form-row">
@@ -163,13 +174,13 @@ export default function NotificationRules({
             <input
               type="text"
               className="cp-input notification-rule-maps-input"
-              placeholder="de_dust2, de_inferno"
+              placeholder={t.notificationRules.mapsPlaceholder}
               value={mapsInput}
               onChange={(e) => setMapsInput(e.target.value)}
             />
           )}
           <button className="cp-btn-secondary" onClick={handleAdd}>
-            Add rule
+            {t.notificationRules.addRule}
           </button>
           {error && <span className="cp-inline-error">{error}</span>}
         </div>

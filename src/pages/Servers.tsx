@@ -4,6 +4,7 @@ import type { FavoriteServer, GameServer, ServerPlayer } from '../../electron/mo
 import type { KnownPlayer } from '../../electron/modules/player-tracking'
 import { FAVORITES_KEY, LAST_SERVER_KEY, SERVER_VIEW_KEY, saveJSON } from '../lib/storage'
 import { useToast } from '../lib/toast'
+import { useT } from '../lib/i18n'
 import { setKnownServers } from '../lib/serverListStore'
 import { currentSourceSpecs, dedupeAddresses, getNeighborhoodScanEnabled } from '../lib/serverSources'
 import { getKnownServerRetentionDays } from '../lib/knownServers'
@@ -140,6 +141,7 @@ interface ServersProps {
 }
 
 export default function Servers({ focusServer, onFocusServerHandled }: ServersProps): React.JSX.Element {
+  const t = useT()
   const [favorites, setFavorites] = useState<FavoriteServer[]>(loadFavorites)
   const [servers, setServers] = useState<GameServer[]>([])
   const [addValue, setAddValue] = useState('')
@@ -187,7 +189,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
         window.launcher.getKnownServers()
       ])
       for (const source of sourceResults) {
-        if (source.error) pushToast(`Server source "${source.id}" failed: ${source.error}`)
+        if (source.error) pushToast(t.servers.sourceFailed(source.id, source.error))
       }
       const knownAddresses: FavoriteServer[] = knownPool.map((k) => ({ ip: k.ip, port: k.port }))
 
@@ -475,11 +477,11 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
   function handleAddFavorite(): void {
     const parsed = parseAddress(addValue)
     if (!parsed) {
-      setAddError('Enter an address as ip:port')
+      setAddError(t.servers.addErrorInvalid)
       return
     }
     if (favorites.some((f) => serverKey(f) === serverKey(parsed))) {
-      setAddError('Already in favorites')
+      setAddError(t.servers.addErrorDuplicate)
       return
     }
     const next = [...favorites, parsed]
@@ -538,7 +540,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
             ref={searchRef}
             type="text"
             className="cp-input servers-search-input"
-            placeholder="Search servers…  (press / to focus)"
+            placeholder={t.servers.searchPlaceholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -549,31 +551,31 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
             className={`filter-chip${filters.notFull ? ' active' : ''}`}
             onClick={() => toggleFilter('notFull')}
           >
-            Not full
+            {t.servers.filterNotFull}
           </button>
           <button
             className={`filter-chip${filters.notEmpty ? ' active' : ''}`}
             onClick={() => toggleFilter('notEmpty')}
           >
-            Not empty
+            {t.servers.filterNotEmpty}
           </button>
           <button
             className={`filter-chip${filters.noPassword ? ' active' : ''}`}
             onClick={() => toggleFilter('noPassword')}
           >
-            No password
+            {t.servers.filterNoPassword}
           </button>
           <button
             className={`filter-chip${filters.favoritesOnly ? ' active' : ''}`}
             onClick={() => toggleFilter('favoritesOnly')}
           >
-            Favorites
+            {t.servers.filterFavorites}
           </button>
           <button
             className={`filter-chip${filters.showUnresponsive ? ' active' : ''}`}
             onClick={() => toggleFilter('showUnresponsive')}
           >
-            Show unresponsive
+            {t.servers.filterShowUnresponsive}
           </button>
           <select
             className={`filter-chip filter-chip-select${mapFilter ? ' active' : ''}`}
@@ -581,7 +583,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
             onChange={(e) => setMapFilter(e.target.value)}
             disabled={mapOptions.length === 0}
           >
-            <option value="">All maps</option>
+            <option value="">{t.servers.allMaps}</option>
             {mapOptions.map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -590,18 +592,18 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
           </select>
         </div>
 
-        <div className="view-toggle" role="group" aria-label="View">
+        <div className="view-toggle" role="group" aria-label={t.servers.viewGroupLabel}>
           <button
             className={`view-toggle-btn${view === 'list' ? ' active' : ''}`}
             onClick={() => handleViewChange('list')}
-            title="List view"
+            title={t.servers.listView}
           >
             <List size={14} />
           </button>
           <button
             className={`view-toggle-btn${view === 'grid' ? ' active' : ''}`}
             onClick={() => handleViewChange('grid')}
-            title="Grid view"
+            title={t.servers.gridView}
           >
             <LayoutGrid size={14} />
           </button>
@@ -611,7 +613,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
           className={`refresh-btn${loading ? ' spinning' : ''}`}
           onClick={refresh}
           disabled={loading}
-          title="Refresh"
+          title={t.servers.refresh}
         >
           <RotateCw size={16} />
         </button>
@@ -619,11 +621,11 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
 
       {funnel && (
         <div className="servers-funnel">
-          <span className="servers-funnel-num">{funnel.sources}</span> source{funnel.sources === 1 ? '' : 's'}
+          <span className="servers-funnel-num">{funnel.sources}</span> {t.servers.funnelSources(funnel.sources)}
           {' · '}
-          <span className="servers-funnel-num">{funnel.addresses}</span> address{funnel.addresses === 1 ? '' : 'es'}
+          <span className="servers-funnel-num">{funnel.addresses}</span> {t.servers.funnelAddresses(funnel.addresses)}
           {' · '}
-          <span className="servers-funnel-num">{funnel.responding}</span> responding
+          <span className="servers-funnel-num">{funnel.responding}</span> {t.servers.funnelResponding}
         </div>
       )}
 
@@ -632,11 +634,11 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
           {sourceIssues.map((issue) => (
             <p key={issue.id} className="servers-source-issue">
               {issue.kind === 'battlemetrics'
-                ? 'BattleMetrics'
+                ? t.servers.sourceKindBattlemetrics
                 : issue.kind === 'master'
-                  ? 'Master server'
+                  ? t.servers.sourceKindMaster
                   : issue.kind === 'neighborhood'
-                    ? 'Neighborhood scan'
+                    ? t.servers.sourceKindNeighborhood
                     : issue.id}
               :{' '}
               {issue.message}
@@ -649,13 +651,13 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
         <input
           type="text"
           className="cp-input servers-add-input"
-          placeholder="Add server by address — ip:port"
+          placeholder={t.servers.addPlaceholder}
           value={addValue}
           onChange={(e) => setAddValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAddFavorite()}
         />
         <button className="cp-btn-secondary" onClick={handleAddFavorite}>
-          Add favorite
+          {t.servers.addFavorite}
         </button>
         {addError && <span className="cp-inline-error">{addError}</span>}
       </div>
@@ -665,16 +667,16 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
           <span className="col-dot" />
           <span className="col-star" />
           <button className="col-sort" onClick={() => toggleSort('name')}>
-            Name{sortKey === 'name' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+            {t.servers.colName}{sortKey === 'name' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
           </button>
           <button className="col-sort" onClick={() => toggleSort('map')}>
-            Map{sortKey === 'map' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+            {t.servers.colMap}{sortKey === 'map' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
           </button>
           <button className="col-sort col-sort-right" onClick={() => toggleSort('players')}>
-            Players{sortKey === 'players' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+            {t.servers.colPlayers}{sortKey === 'players' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
           </button>
           <button className="col-sort col-sort-right" onClick={() => toggleSort('ping')}>
-            Ping{sortKey === 'ping' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+            {t.servers.colPing}{sortKey === 'ping' && <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
           </button>
           <span className="col-friends" />
           <span className="col-lock" />
@@ -715,7 +717,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
             <TriangleAlert size={28} />
             <p>{error}</p>
             <button className="cp-btn-secondary" onClick={refresh}>
-              Retry
+              {t.common.retry}
             </button>
           </div>
         )}
@@ -723,9 +725,9 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
         {!firstLoad && !error && !anyResults && (
           <div className="server-list-message">
             <Crosshair size={28} />
-            <p>{rawEmpty ? 'No servers found — add a favorite or check back' : 'No servers match these filters'}</p>
+            <p>{rawEmpty ? t.servers.emptyNoServers : t.servers.emptyNoMatches}</p>
             <button className="cp-btn-secondary" onClick={refresh}>
-              Refresh
+              {t.common.refresh}
             </button>
           </div>
         )}
@@ -756,12 +758,12 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                       e.stopPropagation()
                       handleToggleFavorite(server)
                     }}
-                    title={isFavorite ? 'Remove favorite' : 'Add favorite'}
+                    title={isFavorite ? t.servers.removeFavorite : t.servers.addFavorite}
                   >
                     {isFavorite ? '★' : '☆'}
                   </button>
                   <span className="row-name">{server.name}</span>
-                  <span className="row-map">{server.map || '—'}</span>
+                  <span className="row-map">{server.map || t.common.dash}</span>
                   <span className="row-players">
                     {server.players}/{server.maxPlayers}
                   </span>
@@ -775,7 +777,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                         }}
                         disabled={retryingKeys.has(key)}
                       >
-                        {retryingKeys.has(key) ? '…' : 'Retry'}
+                        {retryingKeys.has(key) ? '…' : t.common.retry}
                       </button>
                     ) : (
                       `${server.ping} ms`
@@ -783,7 +785,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                   </span>
                   <span className="row-friends">
                     {friendsOnline.has(key) && (
-                      <span className="friends-badge" title={`Known online: ${friendsOnline.get(key)?.join(', ')}`}>
+                      <span className="friends-badge" title={t.home.knownOnline(friendsOnline.get(key)?.join(', ') ?? '')}>
                         <Users size={11} />
                         {friendsOnline.get(key)?.length}
                       </span>
@@ -796,7 +798,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                       e.stopPropagation()
                       openDrawer(server)
                     }}
-                    title="Server info"
+                    title={t.servers.serverInfo}
                   >
                     <Info size={13} />
                   </button>
@@ -841,7 +843,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                         e.stopPropagation()
                         openDrawer(server)
                       }}
-                      title="Server info"
+                      title={t.servers.serverInfo}
                     >
                       <Info size={12} />
                     </button>
@@ -851,7 +853,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                         e.stopPropagation()
                         handleToggleFavorite(server)
                       }}
-                      title={isFavorite ? 'Remove favorite' : 'Add favorite'}
+                      title={isFavorite ? t.servers.removeFavorite : t.servers.addFavorite}
                     >
                       {isFavorite ? '★' : '☆'}
                     </button>
@@ -863,7 +865,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                     {friendsOnline.has(key) && (
                       <span
                         className="server-card-friends"
-                        title={`Known online: ${friendsOnline.get(key)?.join(', ')}`}
+                        title={t.home.knownOnline(friendsOnline.get(key)?.join(', ') ?? '')}
                       >
                         <Users size={11} />
                         {friendsOnline.get(key)?.length}
@@ -872,7 +874,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                   </div>
                   <div className="server-card-body">
                     <p className="server-card-name">{server.name}</p>
-                    <p className="server-card-map">{server.map || '—'}</p>
+                    <p className="server-card-map">{server.map || t.common.dash}</p>
                     <div className="server-card-stats">
                       <span className="server-card-players">
                         {server.players}<span className="server-card-players-max">/{server.maxPlayers}</span>
@@ -888,7 +890,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                             }}
                             disabled={retryingKeys.has(key)}
                           >
-                            {retryingKeys.has(key) ? '…' : 'Retry'}
+                            {retryingKeys.has(key) ? '…' : t.common.retry}
                           </button>
                         ) : (
                           `${server.ping} ms`
@@ -902,7 +904,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                         handleConnect(server)
                       }}
                     >
-                      Connect
+                      {t.servers.connect}
                     </button>
                   </div>
                 </div>
@@ -921,7 +923,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
               setMenu(null)
             }}
           >
-            Connect
+            {t.servers.connect}
           </button>
           <button
             className="context-menu-item"
@@ -930,7 +932,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
               setMenu(null)
             }}
           >
-            Copy IP
+            {t.servers.copyIp}
           </button>
           <button
             className="context-menu-item"
@@ -939,7 +941,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
               setMenu(null)
             }}
           >
-            {favKeys.has(serverKey(menu.server)) ? 'Remove favorite' : 'Favorite'}
+            {favKeys.has(serverKey(menu.server)) ? t.servers.removeFavorite : t.servers.favorite}
           </button>
           <button
             className="context-menu-item"
@@ -948,7 +950,7 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
               setMenu(null)
             }}
           >
-            Server info
+            {t.servers.serverInfo}
           </button>
         </div>
       )}
@@ -966,33 +968,33 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
               <MapThumb map={drawerServer.map} />
             </div>
             <dl className="server-drawer-meta">
-              <dt>Address</dt>
+              <dt>{t.servers.address}</dt>
               <dd>{serverKey(drawerServer)}</dd>
-              <dt>Players</dt>
+              <dt>{t.servers.players}</dt>
               <dd>
                 {drawerServer.players}/{drawerServer.maxPlayers}
               </dd>
-              <dt>Ping</dt>
+              <dt>{t.servers.ping}</dt>
               <dd className={pingTone(drawerServer.ping)}>
-                {drawerServer.ping === null ? 'timeout' : `${drawerServer.ping} ms`}
+                {drawerServer.ping === null ? t.servers.timeout : `${drawerServer.ping} ms`}
               </dd>
             </dl>
             <div className="server-drawer-actions">
               <button className="cp-btn-primary" onClick={() => handleConnect(drawerServer)}>
-                Connect
+                {t.servers.connect}
               </button>
               <button
                 className="cp-btn-secondary"
                 onClick={() => handleToggleFavorite(drawerServer)}
               >
-                {drawerFavorite ? 'Remove favorite' : 'Add favorite'}
+                {drawerFavorite ? t.servers.removeFavorite : t.servers.addFavorite}
               </button>
             </div>
-            <h3 className="server-drawer-subhead">Players</h3>
-            <p className="drawer-privacy-note">Nicknames seen here are tracked locally only — never uploaded.</p>
-            {players === 'loading' && <p className="muted">Querying players…</p>}
-            {players === 'error' && <p className="muted">Player list unavailable.</p>}
-            {Array.isArray(players) && players.length === 0 && <p className="muted">No players connected.</p>}
+            <h3 className="server-drawer-subhead">{t.servers.drawerPlayersHeading}</h3>
+            <p className="drawer-privacy-note">{t.servers.privacyNote}</p>
+            {players === 'loading' && <p className="muted">{t.servers.queryingPlayers}</p>}
+            {players === 'error' && <p className="muted">{t.servers.playersUnavailable}</p>}
+            {Array.isArray(players) && players.length === 0 && <p className="muted">{t.servers.noPlayers}</p>}
             {Array.isArray(players) && players.length > 0 && (
               <ul className="server-drawer-players">
                 {players
@@ -1005,12 +1007,12 @@ export default function Servers({ focusServer, onFocusServerHandled }: ServersPr
                         <button
                           className={`player-known-toggle${known ? ' active' : ''}`}
                           disabled={!p.name}
-                          title={known ? 'Forget known player' : 'Mark as known player'}
+                          title={known ? t.servers.forgetKnownPlayer : t.servers.markKnownPlayer}
                           onClick={() => handleTogglePlayerKnown(p.name)}
                         >
                           <UserCheck size={12} />
                         </button>
-                        <span className="player-name">{p.name || 'unconnected'}</span>
+                        <span className="player-name">{p.name || t.servers.unconnectedPlayer}</span>
                         <span className="player-score">{p.score}</span>
                         <span className="player-duration">{formatDuration(p.duration)}</span>
                       </li>

@@ -20,6 +20,8 @@
  */
 
 import type { FavoriteServer, GameServer } from './server-browser'
+import { en } from '../../locales/en.ts'
+import type { Messages } from '../../locales/en.ts'
 
 export type RuleType = 'player-threshold' | 'empty-to-active' | 'map-match'
 export type RuleScope = 'global' | 'server'
@@ -130,6 +132,7 @@ function ruleCondition(rule: NotificationRule, server: GameServer): boolean {
 }
 
 function describeRule(
+  t: Messages,
   rule: NotificationRule,
   server: GameServer,
   address: FavoriteServer
@@ -137,11 +140,11 @@ function describeRule(
   const label = server.name || addressKey(address)
   switch (rule.type) {
     case 'player-threshold':
-      return { title: label, body: `${server.players} players online (threshold ${rule.threshold})` }
+      return { title: label, body: t.notifications.thresholdBody(server.players, rule.threshold ?? 0) }
     case 'empty-to-active':
-      return { title: label, body: `Active again — ${server.players} player${server.players === 1 ? '' : 's'} on ${server.map || 'unknown map'}` }
+      return { title: label, body: t.notifications.emptyToActiveBody(server.players, server.map) }
     case 'map-match':
-      return { title: label, body: `Now playing ${server.map}` }
+      return { title: label, body: t.notifications.mapMatchBody(server.map) }
   }
 }
 
@@ -157,7 +160,11 @@ export function evaluateServer(
   rules: NotificationRule[],
   prevState: PerServerState | undefined,
   now: number,
-  cooldownMs: number
+  cooldownMs: number,
+  // Defaults to English so scripts/verify-notifications.mts (and any other caller that
+  // doesn't care about locale) doesn't need updating — notification-poller.ts is the only
+  // caller that passes the user's actual locale.
+  t: Messages = en
 ): { nextState: PerServerState; fire: FireDecision | null } {
   const prevConditions = prevState?.conditions ?? {}
   const nextConditions: Record<string, boolean> = {}
@@ -172,7 +179,7 @@ export function evaluateServer(
     const wasTrue = prevConditions[rule.id] ?? false
     const transitioned = condition && !wasTrue
     if (transitioned && !fire && now >= cooldownUntil) {
-      fire = { address, rule, ...describeRule(rule, server, address) }
+      fire = { address, rule, ...describeRule(t, rule, server, address) }
       cooldownUntil = now + cooldownMs // consumed immediately — suppresses any other rule this same tick too
     }
   }

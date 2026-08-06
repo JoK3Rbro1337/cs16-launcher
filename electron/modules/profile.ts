@@ -13,6 +13,8 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { dialog, type BrowserWindow } from 'electron'
+import { getLocaleSync } from './locale-store'
+import { CATALOGS } from '../../locales'
 
 const FILE_FILTERS = [{ name: 'JSON', extensions: ['json'] }]
 
@@ -25,18 +27,20 @@ export async function exportProfile(
   window: BrowserWindow | null,
   data: unknown
 ): Promise<{ canceled: boolean }> {
+  const title = CATALOGS[getLocaleSync()].dialogs.exportProfileTitle
   const result = window
-    ? await dialog.showSaveDialog(window, { defaultPath: defaultFileName(), filters: FILE_FILTERS })
-    : await dialog.showSaveDialog({ defaultPath: defaultFileName(), filters: FILE_FILTERS })
+    ? await dialog.showSaveDialog(window, { title, defaultPath: defaultFileName(), filters: FILE_FILTERS })
+    : await dialog.showSaveDialog({ title, defaultPath: defaultFileName(), filters: FILE_FILTERS })
   if (result.canceled || !result.filePath) return { canceled: true }
   await writeFile(result.filePath, JSON.stringify(data, null, 2))
   return { canceled: false }
 }
 
 export async function importProfileFile(window: BrowserWindow | null): Promise<{ canceled: boolean; data?: unknown }> {
+  const title = CATALOGS[getLocaleSync()].dialogs.importProfileTitle
   const result = window
-    ? await dialog.showOpenDialog(window, { properties: ['openFile'], filters: FILE_FILTERS })
-    : await dialog.showOpenDialog({ properties: ['openFile'], filters: FILE_FILTERS })
+    ? await dialog.showOpenDialog(window, { title, properties: ['openFile'], filters: FILE_FILTERS })
+    : await dialog.showOpenDialog({ title, properties: ['openFile'], filters: FILE_FILTERS })
   if (result.canceled || result.filePaths.length === 0) return { canceled: true }
   const text = await readFile(result.filePaths[0], 'utf-8')
   try {

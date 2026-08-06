@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { getReduceMotion } from './lib/storage'
+import { I18nProvider } from './lib/i18n'
 import '@fontsource/inter/latin-400.css'
 import '@fontsource/inter/latin-500.css'
 import '@fontsource/saira-condensed/latin-600.css'
@@ -13,6 +14,8 @@ document.documentElement.classList.toggle('reduce-motion', getReduceMotion())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </StrictMode>
 )

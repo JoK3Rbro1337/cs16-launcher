@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Copy } from 'lucide-react'
 import type { LaunchOptionsCheck } from '../../electron/modules/steam-launch-options'
 import { LAUNCH_OPTIONS_NOTICE_DISMISSED_KEY, loadJSON, saveJSON } from '../lib/storage'
+import { useT } from '../lib/i18n'
 
 /**
  * One-time, dismissible: nudges the player to add `+exec autoexec.cfg` to
@@ -10,6 +11,7 @@ import { LAUNCH_OPTIONS_NOTICE_DISMISSED_KEY, loadJSON, saveJSON } from '../lib/
  * is redundancy/reliability, not a hard requirement — worded accordingly.
  */
 export default function LaunchOptionsNotice({ className }: { className?: string }): React.JSX.Element | null {
+  const t = useT()
   const [check, setCheck] = useState<LaunchOptionsCheck | null>(null)
   const [dismissed, setDismissed] = useState(() => loadJSON(LAUNCH_OPTIONS_NOTICE_DISMISSED_KEY, false))
   const [copied, setCopied] = useState(false)
@@ -45,15 +47,14 @@ export default function LaunchOptionsNotice({ className }: { className?: string 
   return (
     <div className={`launch-options-notice${className ? ` ${className}` : ''}`}>
       <p className="launch-options-notice-text">
-        Config variants exec via <code>userconfig.cfg</code> automatically on most Steam builds. For extra
-        reliability, set CS 1.6's Steam Launch Options (right-click in your Steam library → Properties → General) to:
+        {t.notices.launchOptionsTextBefore} <code>{t.notices.launchOptionsCode}</code> {t.notices.launchOptionsTextAfter}
       </p>
       <div className="launch-options-notice-row">
         <code className="launch-options-notice-value">{recommended}</code>
         <button className="cp-btn-secondary" onClick={handleCopy}>
-          <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
+          <Copy size={12} /> {copied ? t.notices.copied : t.notices.copy}
         </button>
-        <button className="launch-options-notice-dismiss" onClick={handleDismiss} aria-label="Dismiss">
+        <button className="launch-options-notice-dismiss" onClick={handleDismiss} aria-label={t.notices.dismiss}>
           ×
         </button>
       </div>

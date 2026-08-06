@@ -11,15 +11,9 @@ import {
 } from 'lucide-react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import { SIDEBAR_COLLAPSED_KEY, loadJSON, saveJSON } from '../lib/storage'
+import { useT } from '../lib/i18n'
 
 export type Tab = 'home' | 'servers' | 'content' | 'settings'
-
-const NAV_ITEMS: { id: Tab; label: string; icon: typeof Home }[] = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'servers', label: 'Servers', icon: Server },
-  { id: 'content', label: 'Content', icon: Boxes },
-  { id: 'settings', label: 'Settings', icon: SettingsIcon }
-]
 
 export default function Sidebar({
   tab,
@@ -28,9 +22,17 @@ export default function Sidebar({
   tab: Tab
   onSelect: (tab: Tab) => void
 }): React.JSX.Element {
+  const t = useT()
   const [collapsed, setCollapsed] = useState(() => loadJSON(SIDEBAR_COLLAPSED_KEY, false))
   const [steam, setSteam] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
   const [version, setVersion] = useState<string | null>(null)
+
+  const NAV_ITEMS: { id: Tab; label: string; icon: typeof Home }[] = [
+    { id: 'home', label: t.nav.home, icon: Home },
+    { id: 'servers', label: t.nav.servers, icon: Server },
+    { id: 'content', label: t.nav.content, icon: Boxes },
+    { id: 'settings', label: t.nav.settings, icon: SettingsIcon }
+  ]
 
   useEffect(() => {
     window.launcher
@@ -50,14 +52,14 @@ export default function Sidebar({
 
   const steamOk = steam !== 'loading' && steam !== 'error' && steam.installed
   const steamKnown = steam !== 'loading' && steam !== 'error'
-  const steamLabel = steam === 'loading' ? 'Checking Steam…' : steamOk ? 'Steam detected' : 'Steam not found'
+  const steamLabel = steam === 'loading' ? t.nav.steamChecking : steamOk ? t.nav.steamDetected : t.nav.steamNotFound
 
   return (
     <nav className={`sidebar${collapsed ? ' collapsed' : ''}`}>
       <button
         className="sidebar-collapse-btn"
         onClick={toggleCollapsed}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={collapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
       >
         {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
       </button>
@@ -91,7 +93,7 @@ export default function Sidebar({
           {!collapsed && <span className="steam-chip-label">{steamLabel}</span>}
           {!collapsed && steamKnown && !steamOk && (
             <button className="steam-chip-fix" onClick={() => onSelect('home')}>
-              Fix
+              {t.nav.fix}
             </button>
           )}
         </div>

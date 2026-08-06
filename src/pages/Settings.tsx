@@ -14,6 +14,7 @@ import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setRedu
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
 import { applyProfile, gatherProfile, isLauncherProfile, summarizeProfile, type ImportMode, type LauncherProfile } from '../lib/profile'
+import { useI18n, LOCALES, LOCALE_NAMES, type Messages } from '../lib/i18n'
 import ConfirmModal from '../components/ConfirmModal'
 import NotificationRules from '../components/NotificationRules'
 import ProfileImportModal from '../components/ProfileImportModal'
@@ -40,11 +41,11 @@ function isValidSourceUrl(value: string): boolean {
 }
 
 /** "Last check (14:32): 41 addresses" / "Last check (14:32): failed — <reason>" — null if never checked. */
-function sourceStatusLabel(entry: SourceStatusEntry | undefined): string | null {
+function sourceStatusLabel(t: Messages, entry: SourceStatusEntry | undefined): string | null {
   if (!entry) return null
   const when = new Date(entry.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  if (entry.error) return `Last check (${when}): failed — ${entry.error}`
-  return `Last check (${when}): ${entry.addresses} address${entry.addresses === 1 ? '' : 'es'}`
+  if (entry.error) return t.settings.lastCheckFailed(when, entry.error)
+  return t.settings.lastCheckOk(when, entry.addresses)
 }
 
 /** "14:32" or "—" for a null poll timestamp. */
@@ -119,6 +120,7 @@ function ProgressRing({ pct }: { pct: number }): React.JSX.Element {
 }
 
 export default function Settings(): React.JSX.Element {
+  const { t, locale, setLocale } = useI18n()
   const { pushToast } = useToast()
   const [manifestUrl, setManifestUrl] = useState(() => localStorage.getItem(MANIFEST_URL_KEY) ?? '')
   const [reduceMotion, setReduceMotionState] = useState(getReduceMotion)
@@ -284,7 +286,7 @@ export default function Settings(): React.JSX.Element {
     try {
       await window.launcher.restoreBackup(path)
       setBackups((prev) => prev?.filter((f) => f.path !== path) ?? null)
-      pushToast(`Restored ${fileName(path)}`, 'ok')
+      pushToast(t.settings.restoredFileToast(fileName(path)), 'ok')
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
     } finally {
@@ -298,7 +300,7 @@ export default function Settings(): React.JSX.Element {
     try {
       const { restored } = await window.launcher.restoreAllBackups()
       setBackups([])
-      pushToast(`Restored ${restored.length} file(s)`, 'ok')
+      pushToast(t.settings.restoredAllToast(restored.length), 'ok')
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
     } finally {
@@ -384,7 +386,7 @@ export default function Settings(): React.JSX.Element {
     setDesktopIntegrationBusy(true)
     try {
       await window.launcher.installDesktopIntegration()
-      pushToast('Added to your application menu', 'ok')
+      pushToast(t.settings.addedToMenuToast, 'ok')
       refreshDesktopIntegration()
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
@@ -397,7 +399,7 @@ export default function Settings(): React.JSX.Element {
     setDesktopIntegrationBusy(true)
     try {
       await window.launcher.removeDesktopIntegration()
-      pushToast('Removed from your application menu', 'ok')
+      pushToast(t.settings.removedFromMenuToast, 'ok')
       refreshDesktopIntegration()
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
@@ -409,11 +411,11 @@ export default function Settings(): React.JSX.Element {
   function handleAddSubscription(): void {
     const url = subUrl.trim()
     if (!isValidSourceUrl(url)) {
-      setSubError('Enter a valid http(s) URL')
+      setSubError(t.settings.subErrorInvalid)
       return
     }
     if (subscriptions.some((s) => s.url === url)) {
-      setSubError('Already added')
+      setSubError(t.settings.subErrorDuplicate)
       return
     }
     const next = [...subscriptions, { id: crypto.randomUUID(), url }]
@@ -450,7 +452,7 @@ export default function Settings(): React.JSX.Element {
     try {
       const profile = await gatherProfile()
       const result = await window.launcher.exportProfile(profile)
-      if (!result.canceled) pushToast('Profile exported', 'ok')
+      if (!result.canceled) pushToast(t.settings.profileExportedToast, 'ok')
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
     } finally {
@@ -464,7 +466,7 @@ export default function Settings(): React.JSX.Element {
       const result = await window.launcher.importProfileFile()
       if (result.canceled) return
       if (!isLauncherProfile(result.data)) {
-        pushToast("That file isn't a 1.6X Launcher profile")
+        pushToast(t.settings.profileNotAFileToast)
         return
       }
       setPendingImport(result.data)
@@ -479,7 +481,7 @@ export default function Settings(): React.JSX.Element {
     if (!pendingImport) return
     try {
       await applyProfile(pendingImport, mode)
-      pushToast(`Profile imported (${mode})`, 'ok')
+      pushToast(t.settings.profileImportedToast(mode), 'ok')
       refreshKnownPlayers()
       window.launcher.getNotificationState().then(({ settings, rules, status }) => {
         setNotifSettings(settings)
@@ -500,20 +502,20 @@ export default function Settings(): React.JSX.Element {
 
   const headline =
     state === 'syncing'
-      ? `${progress?.completedFiles ?? 0}/${progress?.totalFiles ?? 0} files`
+      ? t.settings.headlineFiles(progress?.completedFiles ?? 0, progress?.totalFiles ?? 0)
       : state === 'done'
-        ? 'Up to date'
+        ? t.settings.headlineUpToDate
         : state === 'error'
-          ? 'Sync failed'
-          : 'Ready to sync'
+          ? t.settings.headlineSyncFailed
+          : t.settings.headlineReady
 
   return (
     <section className="page">
-      <h1>Content Sync</h1>
+      <h1>{t.settings.contentSyncTitle}</h1>
 
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="manifest-url">
-          Content manifest URL
+          {t.settings.manifestUrlLabel}
         </label>
         <input
           id="manifest-url"
@@ -531,22 +533,22 @@ export default function Settings(): React.JSX.Element {
           <p className="sync-summary-headline">{headline}</p>
           <p className="sync-summary-eta">
             {state === 'syncing'
-              ? `ETA ${formatEta(etaSeconds)} · ${formatSpeed(globalSpeed) || '—'}`
+              ? t.settings.etaLine(formatEta(etaSeconds), formatSpeed(globalSpeed))
               : state === 'done' && result
-                ? `v${result.version} · ${result.updatedFiles} updated, ${result.skippedFiles} unchanged`
-                : 'No sync in progress'}
+                ? t.settings.resultLine(result.version, result.updatedFiles, result.skippedFiles)
+                : t.settings.noSyncInProgress}
           </p>
         </div>
         <div className="sync-summary-actions">
           <button className="cp-btn-primary" disabled={!manifestUrl || state === 'syncing'} onClick={() => runSync('sync')}>
-            {state === 'syncing' && lastAction === 'sync' ? 'Syncing…' : 'Sync Content'}
+            {state === 'syncing' && lastAction === 'sync' ? t.settings.syncing : t.settings.syncContent}
           </button>
           <button
             className="cp-btn-secondary"
             disabled={!manifestUrl || state === 'syncing'}
             onClick={() => setConfirmVerify(true)}
           >
-            {state === 'syncing' && lastAction === 'verify' ? 'Verifying…' : 'Verify & Repair'}
+            {state === 'syncing' && lastAction === 'verify' ? t.settings.verifying : t.settings.verifyAndRepair}
           </button>
         </div>
       </div>
@@ -556,7 +558,7 @@ export default function Settings(): React.JSX.Element {
           <TriangleAlert size={14} />
           <span>{error}</span>
           <button className="cp-btn-secondary" onClick={() => runSync(lastAction)}>
-            Retry
+            {t.settings.retry}
           </button>
         </div>
       )}
@@ -573,7 +575,7 @@ export default function Settings(): React.JSX.Element {
                   <div className="sync-item-bar-fill" style={{ width: `${pctItem}%` }} />
                 </div>
                 <span className="sync-item-speed">
-                  {item.status === 'downloading' ? formatSpeed(itemSpeeds[item.path] ?? 0) : item.status === 'done' ? 'done' : ''}
+                  {item.status === 'downloading' ? formatSpeed(itemSpeeds[item.path] ?? 0) : item.status === 'done' ? t.settings.itemDone : ''}
                 </span>
               </div>
             )
@@ -583,9 +585,9 @@ export default function Settings(): React.JSX.Element {
 
       {confirmVerify && (
         <ConfirmModal
-          title="Verify & Repair Files"
-          message="Re-checks every file in the active content build against the manifest and re-downloads anything that doesn't match. This can take a while on a slow connection."
-          confirmLabel="Verify & Repair"
+          title={t.settings.verifyModalTitle}
+          message={t.settings.verifyModalMessage}
+          confirmLabel={t.settings.verifyAndRepair}
           onConfirm={() => {
             setConfirmVerify(false)
             runSync('verify')
@@ -594,36 +596,33 @@ export default function Settings(): React.JSX.Element {
         />
       )}
 
-      <h2 className="section-header">Folders</h2>
+      <h2 className="section-header">{t.settings.sectionFolders}</h2>
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Game folder</p>
-            <p className="settings-row-desc">Open the CS 1.6 install directory in your file manager.</p>
+            <p className="settings-row-label">{t.settings.gameFolderLabel}</p>
+            <p className="settings-row-desc">{t.settings.gameFolderDesc}</p>
           </div>
           <button className="cp-btn-secondary" onClick={handleOpenGameFolder}>
-            <FolderOpen size={14} /> Open
+            <FolderOpen size={14} /> {t.settings.open}
           </button>
         </div>
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Backups folder</p>
-            <p className="settings-row-desc">Original files the launcher preserved before overwriting them.</p>
+            <p className="settings-row-label">{t.settings.backupsFolderLabel}</p>
+            <p className="settings-row-desc">{t.settings.backupsFolderDesc}</p>
           </div>
           <button className="cp-btn-secondary" onClick={handleOpenBackupFolder}>
-            <FolderOpen size={14} /> Open
+            <FolderOpen size={14} /> {t.settings.open}
           </button>
         </div>
       </div>
 
-      <h2 className="section-header">Restore Original Files</h2>
+      <h2 className="section-header">{t.settings.sectionRestore}</h2>
       <div className="settings-card">
-        <p className="settings-row-desc restore-files-hint">
-          Whatever was on disk before the launcher first overwrote it, for every file it's touched — the safety net
-          behind every sync.
-        </p>
-        {backups === null && <p className="muted">Loading…</p>}
-        {backups !== null && backups.length === 0 && <p className="muted">No backed-up files — nothing to restore.</p>}
+        <p className="settings-row-desc restore-files-hint">{t.settings.restoreHint}</p>
+        {backups === null && <p className="muted">{t.settings.restoreLoading}</p>}
+        {backups !== null && backups.length === 0 && <p className="muted">{t.settings.restoreEmpty}</p>}
         {backups !== null && backups.length > 0 && (
           <>
             <ul className="restore-files-list">
@@ -636,7 +635,7 @@ export default function Settings(): React.JSX.Element {
                     disabled={restoringPath === file.path || restoringAll}
                     onClick={() => handleRestoreBackup(file.path)}
                   >
-                    {restoringPath === file.path ? 'Restoring…' : 'Restore'}
+                    {restoringPath === file.path ? t.settings.restoring : t.settings.restore}
                   </button>
                 </li>
               ))}
@@ -646,7 +645,7 @@ export default function Settings(): React.JSX.Element {
               disabled={restoringAll}
               onClick={() => setConfirmRestoreAll(true)}
             >
-              {restoringAll ? 'Restoring all…' : `Restore all (${backups.length})`}
+              {restoringAll ? t.settings.restoringAll : t.settings.restoreAll(backups.length)}
             </button>
           </>
         )}
@@ -654,26 +653,22 @@ export default function Settings(): React.JSX.Element {
 
       {confirmRestoreAll && (
         <ConfirmModal
-          title="Restore Original Files"
-          message={`Restores all ${backups?.length ?? 0} backed-up file(s) to what they were before the launcher touched them. Anything a manifest variant put in their place is replaced.`}
-          confirmLabel="Restore All"
+          title={t.settings.restoreAllModalTitle}
+          message={t.settings.restoreAllModalMessage(backups?.length ?? 0)}
+          confirmLabel={t.settings.restoreAllConfirm}
           onConfirm={handleRestoreAllBackups}
           onCancel={() => setConfirmRestoreAll(false)}
         />
       )}
 
-      <h2 className="section-header">Server Sources</h2>
+      <h2 className="section-header">{t.settings.sectionServerSources}</h2>
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Master server discovery</p>
-            <p className="settings-row-desc">
-              Valve's GoldSrc master server — always on, not configurable. As of 2026-07 it appears to be down
-              (both the hostname and its documented IP fallback are unreachable), so this currently contributes
-              nothing; we keep trying every refresh in case Valve fixes it.
-            </p>
-            {sourceStatusLabel(sourceStatus.find((s) => s.id === 'master')) && (
-              <p className="server-sources-status">{sourceStatusLabel(sourceStatus.find((s) => s.id === 'master'))}</p>
+            <p className="settings-row-label">{t.settings.masterLabel}</p>
+            <p className="settings-row-desc">{t.settings.masterDesc}</p>
+            {sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'master')) && (
+              <p className="server-sources-status">{sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'master'))}</p>
             )}
           </div>
         </div>
@@ -682,15 +677,11 @@ export default function Settings(): React.JSX.Element {
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">BattleMetrics</p>
-            <p className="settings-row-desc">
-              Server list from battlemetrics.com — as of 2026-07 their public API requires a paid subscription
-              (unauthenticated requests get an access-denied error), so this is off by default. Only enable it
-              if you have one. Server name, map, players, and ping always come from our own queries either way.
-            </p>
-            {battlemetricsEnabled && sourceStatusLabel(sourceStatus.find((s) => s.id === 'battlemetrics')) && (
+            <p className="settings-row-label">{t.settings.battlemetricsLabel}</p>
+            <p className="settings-row-desc">{t.settings.battlemetricsDesc}</p>
+            {battlemetricsEnabled && sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'battlemetrics')) && (
               <p className="server-sources-status">
-                {sourceStatusLabel(sourceStatus.find((s) => s.id === 'battlemetrics'))}
+                {sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'battlemetrics'))}
               </p>
             )}
           </div>
@@ -698,7 +689,7 @@ export default function Settings(): React.JSX.Element {
             className={`toggle-switch${battlemetricsEnabled ? ' on' : ''}`}
             role="switch"
             aria-checked={battlemetricsEnabled}
-            aria-label="BattleMetrics source"
+            aria-label={t.settings.battlemetricsAriaLabel}
             onClick={handleToggleBattlemetrics}
           >
             <span className="toggle-switch-thumb" />
@@ -708,26 +699,26 @@ export default function Settings(): React.JSX.Element {
 
       <div className="settings-card">
         <p className="settings-row-desc server-sources-hint">
-          Add URLs that return plain-text <code>ip:port</code> lines or a JSON array. Fetched and merged in on
-          every server-list refresh.
+          {t.settings.subscriptionsHintBefore} <code>{t.settings.subscriptionsHintCode}</code>{' '}
+          {t.settings.subscriptionsHintAfter}
         </p>
         {subscriptions.length === 0 ? (
-          <p className="muted">No subscriptions added.</p>
+          <p className="muted">{t.settings.noSubscriptions}</p>
         ) : (
           <ul className="server-sources-list">
             {subscriptions.map((sub) => (
               <li key={sub.id} className="server-sources-item">
                 <div>
                   {sub.id === DEFAULT_SUBSCRIPTION_ID && (
-                    <p className="server-sources-default-label">Default curated list (community-maintained)</p>
+                    <p className="server-sources-default-label">{t.settings.defaultSubscriptionLabel}</p>
                   )}
                   <span className="server-sources-url">{sub.url}</span>
-                  {sourceStatusLabel(sourceStatus.find((s) => s.id === sub.id)) && (
-                    <p className="server-sources-status">{sourceStatusLabel(sourceStatus.find((s) => s.id === sub.id))}</p>
+                  {sourceStatusLabel(t, sourceStatus.find((s) => s.id === sub.id)) && (
+                    <p className="server-sources-status">{sourceStatusLabel(t, sourceStatus.find((s) => s.id === sub.id))}</p>
                   )}
                 </div>
                 <button className="cp-btn-secondary" onClick={() => handleRemoveSubscription(sub.id)}>
-                  Remove
+                  {t.settings.removeSource}
                 </button>
               </li>
             ))}
@@ -737,13 +728,13 @@ export default function Settings(): React.JSX.Element {
           <input
             type="text"
             className="cp-input servers-add-input server-sources-input"
-            placeholder="https://example.com/servers.txt"
+            placeholder={t.settings.subscriptionUrlPlaceholder}
             value={subUrl}
             onChange={(e) => setSubUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddSubscription()}
           />
           <button className="cp-btn-secondary" onClick={handleAddSubscription}>
-            Add source
+            {t.settings.addSource}
           </button>
           {subError && <span className="cp-inline-error">{subError}</span>}
         </div>
@@ -752,21 +743,17 @@ export default function Settings(): React.JSX.Element {
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Known servers pool</p>
-            <p className="settings-row-desc">
-              Every public server you actually connect to — however you joined — is remembered locally and
-              merged into every refresh, same as favorites. No network dependency; it's how the launcher gets
-              better at finding servers the more you play.
-            </p>
-            {sourceStatusLabel(sourceStatus.find((s) => s.id === 'known-pool')) && (
-              <p className="server-sources-status">{sourceStatusLabel(sourceStatus.find((s) => s.id === 'known-pool'))}</p>
+            <p className="settings-row-label">{t.settings.knownPoolLabel}</p>
+            <p className="settings-row-desc">{t.settings.knownPoolDesc}</p>
+            {sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'known-pool')) && (
+              <p className="server-sources-status">{sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'known-pool'))}</p>
             )}
           </div>
         </div>
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Retention</p>
-            <p className="settings-row-desc">Drop a known server if it hasn't answered in this many days.</p>
+            <p className="settings-row-label">{t.settings.retentionLabel}</p>
+            <p className="settings-row-desc">{t.settings.retentionDesc}</p>
           </div>
           <input
             type="number"
@@ -781,17 +768,11 @@ export default function Settings(): React.JSX.Element {
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Neighborhood scan</p>
-            <p className="settings-row-desc">
-              Off by default. When enabled, probes nearby addresses (same /24, ports 27015–27020) around servers
-              you already know — favorites and servers you've actually connected to — using the same public
-              status query the in-game browser itself uses. Read-only, no connection to any server; capped and
-              rate-limited per refresh. May slow down refresh and sends UDP packets to addresses you haven't
-              explicitly added.
-            </p>
-            {neighborhoodScanEnabled && sourceStatusLabel(sourceStatus.find((s) => s.id === 'neighborhood')) && (
+            <p className="settings-row-label">{t.settings.neighborhoodLabel}</p>
+            <p className="settings-row-desc">{t.settings.neighborhoodDesc}</p>
+            {neighborhoodScanEnabled && sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'neighborhood')) && (
               <p className="server-sources-status">
-                {sourceStatusLabel(sourceStatus.find((s) => s.id === 'neighborhood'))}
+                {sourceStatusLabel(t, sourceStatus.find((s) => s.id === 'neighborhood'))}
               </p>
             )}
           </div>
@@ -799,7 +780,7 @@ export default function Settings(): React.JSX.Element {
             className={`toggle-switch${neighborhoodScanEnabled ? ' on' : ''}`}
             role="switch"
             aria-checked={neighborhoodScanEnabled}
-            aria-label="Neighborhood scan source"
+            aria-label={t.settings.neighborhoodAriaLabel}
             onClick={handleToggleNeighborhoodScan}
           >
             <span className="toggle-switch-thumb" />
@@ -807,15 +788,11 @@ export default function Settings(): React.JSX.Element {
         </div>
       </div>
 
-      <h2 className="section-header">Known Players</h2>
+      <h2 className="section-header">{t.settings.sectionKnownPlayers}</h2>
       <div className="settings-card">
-        <p className="settings-row-desc server-sources-hint">
-          Nicknames you've marked known/friend from a server's player list. Tracked and stored locally only —
-          nothing here is ever uploaded. Marked players are highlighted in the server-info drawer and light up a
-          "known online" badge on the server browser and Home when recently seen.
-        </p>
+        <p className="settings-row-desc server-sources-hint">{t.settings.knownPlayersHint}</p>
         {knownPlayers.length === 0 ? (
-          <p className="muted">No known players yet — mark one from a server's player list.</p>
+          <p className="muted">{t.settings.knownPlayersEmpty}</p>
         ) : (
           <ul className="server-sources-list">
             {knownPlayers
@@ -830,24 +807,24 @@ export default function Settings(): React.JSX.Element {
                         <input
                           type="text"
                           className="cp-input servers-add-input"
-                          placeholder="Optional note"
+                          placeholder={t.settings.notePlaceholder}
                           value={noteDraft}
                           autoFocus
                           onChange={(e) => setNoteDraft(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleSaveNote(player.name)}
                         />
                         <button className="cp-btn-secondary" onClick={() => handleSaveNote(player.name)}>
-                          Save
+                          {t.settings.noteSave}
                         </button>
                       </div>
                     ) : (
                       <p className="server-sources-status known-player-note" onClick={() => handleStartEditNote(player)}>
-                        {player.note || 'Add a note…'}
+                        {player.note || t.settings.noteAdd}
                       </p>
                     )}
                   </div>
                   <button className="cp-btn-secondary" onClick={() => handleForgetPlayer(player.name)}>
-                    Forget
+                    {t.settings.forgetPlayer}
                   </button>
                 </li>
               ))}
@@ -855,23 +832,19 @@ export default function Settings(): React.JSX.Element {
         )}
       </div>
 
-      <h2 className="section-header">Profile</h2>
+      <h2 className="section-header">{t.settings.sectionProfile}</h2>
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Export / import profile</p>
-            <p className="settings-row-desc">
-              A single JSON file with your favorites, server sources, known servers, known players, notification
-              rules and settings, content selections, and your local My Config snapshot — everything needed to
-              carry your setup to another install.
-            </p>
+            <p className="settings-row-label">{t.settings.profileLabel}</p>
+            <p className="settings-row-desc">{t.settings.profileDesc}</p>
           </div>
           <div className="profile-actions">
             <button className="cp-btn-secondary" disabled={exporting} onClick={handleExportProfile}>
-              {exporting ? 'Exporting…' : 'Export…'}
+              {exporting ? t.settings.exporting : t.settings.export}
             </button>
             <button className="cp-btn-secondary" disabled={importing} onClick={handleImportProfileClick}>
-              {importing ? 'Reading…' : 'Import…'}
+              {importing ? t.settings.importReading : t.settings.import}
             </button>
           </div>
         </div>
@@ -885,19 +858,41 @@ export default function Settings(): React.JSX.Element {
         />
       )}
 
-      <h2 className="section-header">Notifications</h2>
+      <h2 className="section-header">{t.settings.sectionLanguage}</h2>
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Background server notifications</p>
-            <p className="settings-row-desc">
-              Off by default. When on, periodically checks favorites + your known-servers pool while the launcher
-              is open and fires a system notification per rule below — never while the launcher is closed.
-            </p>
+            <p className="settings-row-label">{t.settings.languageLabel}</p>
+            <p className="settings-row-desc">{t.settings.languageDesc}</p>
+          </div>
+          <div className="filter-chips" role="group" aria-label={t.settings.languageLabel}>
+            {LOCALES.map((code) => (
+              <button
+                key={code}
+                className={`filter-chip${locale === code ? ' active' : ''}`}
+                aria-pressed={locale === code}
+                onClick={() => setLocale(code)}
+              >
+                {LOCALE_NAMES[code]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <h2 className="section-header">{t.settings.sectionNotifications}</h2>
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">{t.settings.notificationsLabel}</p>
+            <p className="settings-row-desc">{t.settings.notificationsDesc}</p>
             {pollStatus && (
               <p className="server-sources-status">
-                Last poll ({pollTimeLabel(pollStatus.lastPollAt)}) · next ({pollTimeLabel(pollStatus.nextPollAt)}) ·
-                watching {pollStatus.watchedCount} favorite{pollStatus.watchedCount === 1 ? '' : 's'} + known pool
+                {t.settings.pollStatusLine(
+                  pollTimeLabel(pollStatus.lastPollAt),
+                  pollTimeLabel(pollStatus.nextPollAt),
+                  pollStatus.watchedCount
+                )}
               </p>
             )}
           </div>
@@ -905,7 +900,7 @@ export default function Settings(): React.JSX.Element {
             className={`toggle-switch${notifSettings?.enabled ? ' on' : ''}`}
             role="switch"
             aria-checked={!!notifSettings?.enabled}
-            aria-label="Background server notifications"
+            aria-label={t.settings.notificationsAriaLabel}
             disabled={!notifSettings}
             onClick={handleToggleNotificationsEnabled}
           >
@@ -917,14 +912,14 @@ export default function Settings(): React.JSX.Element {
           <>
             <div className="settings-row">
               <div>
-                <p className="settings-row-label">Mute</p>
-                <p className="settings-row-desc">Keep polling (status above stays live) but suppress notifications.</p>
+                <p className="settings-row-label">{t.settings.muteLabel}</p>
+                <p className="settings-row-desc">{t.settings.muteDesc}</p>
               </div>
               <button
                 className={`toggle-switch${notifSettings.muted ? ' on' : ''}`}
                 role="switch"
                 aria-checked={notifSettings.muted}
-                aria-label="Mute notifications"
+                aria-label={t.settings.muteAriaLabel}
                 onClick={handleToggleMute}
               >
                 <span className="toggle-switch-thumb" />
@@ -932,8 +927,8 @@ export default function Settings(): React.JSX.Element {
             </div>
             <div className="settings-row">
               <div>
-                <p className="settings-row-label">Poll interval</p>
-                <p className="settings-row-desc">Minutes between background checks (1–30).</p>
+                <p className="settings-row-label">{t.settings.pollIntervalLabel}</p>
+                <p className="settings-row-desc">{t.settings.pollIntervalDesc}</p>
               </div>
               <input
                 type="number"
@@ -946,14 +941,14 @@ export default function Settings(): React.JSX.Element {
             </div>
             <div className="settings-row">
               <div>
-                <p className="settings-row-label">Quiet hours</p>
-                <p className="settings-row-desc">No notifications between these times (still polls, still tracks state).</p>
+                <p className="settings-row-label">{t.settings.quietHoursLabel}</p>
+                <p className="settings-row-desc">{t.settings.quietHoursDesc}</p>
               </div>
               <button
                 className={`toggle-switch${notifSettings.quietHours.enabled ? ' on' : ''}`}
                 role="switch"
                 aria-checked={notifSettings.quietHours.enabled}
-                aria-label="Quiet hours"
+                aria-label={t.settings.quietHoursAriaLabel}
                 onClick={handleToggleQuietHours}
               >
                 <span className="toggle-switch-thumb" />
@@ -962,7 +957,7 @@ export default function Settings(): React.JSX.Element {
             {notifSettings.quietHours.enabled && (
               <div className="settings-row quiet-hours-row">
                 <label className="quiet-hours-field">
-                  From
+                  {t.settings.quietHoursFrom}
                   <input
                     type="time"
                     className="cp-input"
@@ -971,7 +966,7 @@ export default function Settings(): React.JSX.Element {
                   />
                 </label>
                 <label className="quiet-hours-field">
-                  To
+                  {t.settings.quietHoursTo}
                   <input
                     type="time"
                     className="cp-input"
@@ -987,19 +982,16 @@ export default function Settings(): React.JSX.Element {
 
       {notifSettings?.enabled && (
         <div className="settings-card">
-          <p className="settings-row-desc server-sources-hint">
-            Rules apply to every favorite + known-servers-pool address unless scoped to one server. Fires once per
-            transition (e.g. crossing a threshold), never repeatedly while it stays true.
-          </p>
+          <p className="settings-row-desc server-sources-hint">{t.settings.rulesHint}</p>
           <NotificationRules rules={notifRules} onChange={handleNotificationRulesChange} />
         </div>
       )}
 
       {confirmNotificationsIntro && (
         <ConfirmModal
-          title="Enable Background Notifications"
-          message="The launcher will periodically query your favorites and known servers while it's open, and show a system notification when a rule you define matches (e.g. a server crosses a player-count threshold). Nothing is checked while the launcher is closed. You can add rules, mute, set quiet hours, or turn this off again at any time."
-          confirmLabel="Enable"
+          title={t.settings.notificationsIntroModalTitle}
+          message={t.settings.notificationsIntroModalMessage}
+          confirmLabel={t.settings.notificationsIntroConfirm}
           onConfirm={handleConfirmNotificationsIntro}
           onCancel={() => setConfirmNotificationsIntro(false)}
         />
@@ -1007,25 +999,25 @@ export default function Settings(): React.JSX.Element {
 
       {desktopIntegration?.eligible && (
         <>
-          <h2 className="section-header">Desktop Integration</h2>
+          <h2 className="section-header">{t.settings.sectionDesktopIntegration}</h2>
           <div className="settings-card">
             <div className="settings-row">
               <div>
-                <p className="settings-row-label">Add to application menu</p>
+                <p className="settings-row-label">{t.settings.desktopIntegrationLabel}</p>
                 <p className="settings-row-desc">
-                  Registers a <code>.desktop</code> entry (<code>~/.local/share/applications</code>) so your
-                  desktop environment shows a proper name and icon in the taskbar/menu, and — on Wayland — can
-                  grant window-raise requests from background notifications (M12). Never done without this
-                  explicit action.
+                  {t.settings.desktopIntegrationDescBefore} <code>{t.settings.desktopIntegrationDescCode1}</code>{' '}
+                  {t.settings.desktopIntegrationDescMid}
+                  <code>{t.settings.desktopIntegrationDescCode2}</code>
+                  {t.settings.desktopIntegrationDescAfter}
                 </p>
               </div>
               {desktopIntegration.installed ? (
                 <button className="cp-btn-secondary" disabled={desktopIntegrationBusy} onClick={handleRemoveDesktopIntegration}>
-                  {desktopIntegrationBusy ? 'Removing…' : 'Remove'}
+                  {desktopIntegrationBusy ? t.settings.desktopIntegrationRemoving : t.settings.desktopIntegrationRemove}
                 </button>
               ) : (
                 <button className="cp-btn-primary" disabled={desktopIntegrationBusy} onClick={handleInstallDesktopIntegration}>
-                  {desktopIntegrationBusy ? 'Adding…' : 'Add to menu'}
+                  {desktopIntegrationBusy ? t.settings.desktopIntegrationAdding : t.settings.desktopIntegrationAdd}
                 </button>
               )}
             </div>
@@ -1033,18 +1025,18 @@ export default function Settings(): React.JSX.Element {
         </>
       )}
 
-      <h2 className="section-header">Preferences</h2>
+      <h2 className="section-header">{t.settings.sectionPreferences}</h2>
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Reduce motion</p>
-            <p className="settings-row-desc">Turns off animated transitions, pulses, and shimmer everywhere in the app.</p>
+            <p className="settings-row-label">{t.settings.reduceMotionLabel}</p>
+            <p className="settings-row-desc">{t.settings.reduceMotionDesc}</p>
           </div>
           <button
             className={`toggle-switch${reduceMotion ? ' on' : ''}`}
             role="switch"
             aria-checked={reduceMotion}
-            aria-label="Reduce motion"
+            aria-label={t.settings.reduceMotionAriaLabel}
             onClick={handleToggleReduceMotion}
           >
             <span className="toggle-switch-thumb" />
@@ -1052,33 +1044,33 @@ export default function Settings(): React.JSX.Element {
         </div>
       </div>
 
-      <h2 className="section-header">Launcher Updates</h2>
+      <h2 className="section-header">{t.settings.sectionUpdates}</h2>
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <p className="settings-row-label">Version {appVersion ?? '…'}</p>
-            {updateStatus?.state === 'dev-disabled' && <p className="settings-row-desc">Updates are disabled in development builds.</p>}
-            {updateStatus?.state === 'checking' && <p className="settings-row-desc">Checking for updates…</p>}
-            {updateStatus?.state === 'not-available' && <p className="settings-row-desc">You're on the latest version.</p>}
+            <p className="settings-row-label">{t.settings.versionLabel(appVersion ?? '…')}</p>
+            {updateStatus?.state === 'dev-disabled' && <p className="settings-row-desc">{t.settings.updatesDevDisabled}</p>}
+            {updateStatus?.state === 'checking' && <p className="settings-row-desc">{t.settings.updatesChecking}</p>}
+            {updateStatus?.state === 'not-available' && <p className="settings-row-desc">{t.settings.updatesNotAvailable}</p>}
             {updateStatus?.state === 'available' && (
-              <p className="settings-row-desc">Update v{updateStatus.version} is available.</p>
+              <p className="settings-row-desc">{t.settings.updateAvailable(updateStatus.version)}</p>
             )}
             {updateStatus?.state === 'downloading' && (
-              <p className="settings-row-desc">Downloading update — {updateStatus.percent}%</p>
+              <p className="settings-row-desc">{t.settings.updateDownloading(updateStatus.percent)}</p>
             )}
             {updateStatus?.state === 'downloaded' && (
-              <p className="settings-row-desc">Update v{updateStatus.version} downloaded and ready to install.</p>
+              <p className="settings-row-desc">{t.settings.updateDownloaded(updateStatus.version)}</p>
             )}
             {updateStatus?.state === 'error' && <p className="settings-row-desc">{updateStatus.message}</p>}
           </div>
           {updateStatus?.state === 'available' && (
             <button className="cp-btn-primary" onClick={handleDownloadUpdate}>
-              Download
+              {t.settings.download}
             </button>
           )}
           {updateStatus?.state === 'downloaded' && (
             <button className="cp-btn-primary" onClick={handleInstallUpdate}>
-              Restart &amp; Install
+              {t.settings.restartAndInstall}
             </button>
           )}
           {(updateStatus === null ||
@@ -1091,7 +1083,7 @@ export default function Settings(): React.JSX.Element {
               disabled={updateStatus?.state === 'checking'}
               onClick={() => window.launcher.checkForUpdates()}
             >
-              Check for Updates
+              {t.settings.checkForUpdates}
             </button>
           )}
         </div>

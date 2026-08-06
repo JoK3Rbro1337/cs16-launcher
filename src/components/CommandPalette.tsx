@@ -16,6 +16,8 @@ import { FAVORITES_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../li
 import { getKnownServers } from '../lib/serverListStore'
 import { requestVerify } from '../lib/verifyRequest'
 import { useToast } from '../lib/toast'
+import { useT } from '../lib/i18n'
+import type { Messages } from '../lib/i18n'
 
 interface Action {
   id: string
@@ -29,7 +31,7 @@ function serverKey(s: { ip: string; port: number }): string {
   return `${s.ip}:${s.port}`
 }
 
-function buildConnectActions(pushToast: (msg: string) => void): Action[] {
+function buildConnectActions(t: Messages, pushToast: (msg: string) => void): Action[] {
   const favorites = loadJSON<FavoriteServer[]>(FAVORITES_KEY, [])
   const known = getKnownServers()
   const byKey = new Map<string, { ip: string; port: number; name?: string; map?: string }>()
@@ -41,7 +43,7 @@ function buildConnectActions(pushToast: (msg: string) => void): Action[] {
 
   return [...byKey.values()].map((s) => ({
     id: `connect:${serverKey(s)}`,
-    label: `Connect to ${s.name ?? serverKey(s)}`,
+    label: t.commandPalette.connectTo(s.name ?? serverKey(s)),
     hint: s.map ?? serverKey(s),
     icon: Server,
     run: async () => {
@@ -61,6 +63,7 @@ export default function CommandPalette({
   tab: Tab
   onNavigate: (tab: Tab) => void
 }): React.JSX.Element | null {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
@@ -90,17 +93,17 @@ export default function CommandPalette({
     if (!open) return []
     const reduceMotion = getReduceMotion()
     const nav: Action[] = [
-      { id: 'nav:home', label: 'Go to Home', hint: 'screen', icon: HomeIcon, run: () => onNavigate('home') },
-      { id: 'nav:servers', label: 'Go to Servers', hint: 'screen', icon: Server, run: () => onNavigate('servers') },
-      { id: 'nav:content', label: 'Go to Content', hint: 'screen', icon: Boxes, run: () => onNavigate('content') },
-      { id: 'nav:settings', label: 'Go to Settings', hint: 'screen', icon: SettingsIcon, run: () => onNavigate('settings') }
+      { id: 'nav:home', label: t.commandPalette.goToHome, hint: t.commandPalette.hintScreen, icon: HomeIcon, run: () => onNavigate('home') },
+      { id: 'nav:servers', label: t.commandPalette.goToServers, hint: t.commandPalette.hintScreen, icon: Server, run: () => onNavigate('servers') },
+      { id: 'nav:content', label: t.commandPalette.goToContent, hint: t.commandPalette.hintScreen, icon: Boxes, run: () => onNavigate('content') },
+      { id: 'nav:settings', label: t.commandPalette.goToSettings, hint: t.commandPalette.hintScreen, icon: SettingsIcon, run: () => onNavigate('settings') }
     ].filter((a) => a.id !== `nav:${tab}`)
 
     const toggles: Action[] = [
       {
         id: 'toggle:reduce-motion',
-        label: `Turn ${reduceMotion ? 'off' : 'on'} Reduce Motion`,
-        hint: 'setting',
+        label: reduceMotion ? t.commandPalette.toggleReduceMotionOff : t.commandPalette.toggleReduceMotionOn,
+        hint: t.commandPalette.hintSetting,
         icon: Wand2,
         run: () => setReduceMotion(!reduceMotion)
       }
@@ -109,8 +112,8 @@ export default function CommandPalette({
     const folders: Action[] = [
       {
         id: 'folder:game',
-        label: 'Open Game Folder',
-        hint: 'folder',
+        label: t.commandPalette.openGameFolder,
+        hint: t.commandPalette.hintFolder,
         icon: FolderOpen,
         run: async () => {
           try {
@@ -122,8 +125,8 @@ export default function CommandPalette({
       },
       {
         id: 'folder:backup',
-        label: 'Open Backup Folder',
-        hint: 'folder',
+        label: t.commandPalette.openBackupFolder,
+        hint: t.commandPalette.hintFolder,
         icon: FolderOpen,
         run: async () => {
           try {
@@ -138,8 +141,8 @@ export default function CommandPalette({
     const verify: Action[] = [
       {
         id: 'verify-files',
-        label: 'Verify Files',
-        hint: 'checks & repairs content',
+        label: t.commandPalette.verifyFiles,
+        hint: t.commandPalette.verifyFilesHint,
         icon: ShieldCheck,
         run: () => {
           onNavigate('settings')
@@ -148,7 +151,7 @@ export default function CommandPalette({
       }
     ]
 
-    return [...buildConnectActions(pushToast), ...nav, ...verify, ...toggles, ...folders]
+    return [...buildConnectActions(t, pushToast), ...nav, ...verify, ...toggles, ...folders]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, tab])
 
@@ -194,7 +197,7 @@ export default function CommandPalette({
             ref={inputRef}
             type="text"
             className="palette-input"
-            placeholder="Type a command…"
+            placeholder={t.commandPalette.placeholder}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
@@ -204,7 +207,7 @@ export default function CommandPalette({
           />
         </div>
         <div className="palette-list">
-          {filtered.length === 0 && <p className="palette-empty">No matching actions</p>}
+          {filtered.length === 0 && <p className="palette-empty">{t.commandPalette.empty}</p>}
           {filtered.map((action, i) => {
             const Icon = action.icon
             return (

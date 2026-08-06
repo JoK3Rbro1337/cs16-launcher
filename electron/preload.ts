@@ -11,6 +11,7 @@ import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config
 import type { UpdateStatus } from './modules/updater'
 import type { LiveSession, SessionHistoryEntry } from './modules/session-watcher'
 import type { NotificationRule, NotificationSettings, PollStatus } from './modules/notification-poller'
+import type { Locale } from '../locales/types'
 
 /**
  * Renderer-facing API. The renderer has no Node/Electron access — every
@@ -106,6 +107,8 @@ const launcher = {
     return () => ipcRenderer.removeListener('session:update', listener)
   },
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  getLocale: (): Promise<Locale> => ipcRenderer.invoke('locale:get'),
+  setLocale: (locale: Locale): Promise<void> => ipcRenderer.invoke('locale:set', locale),
   openGameFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-game-folder'),
   openBackupFolder: (): Promise<void> => ipcRenderer.invoke('shell:open-backup-folder'),
   checkForUpdates: (): Promise<void> => ipcRenderer.invoke('updater:check'),

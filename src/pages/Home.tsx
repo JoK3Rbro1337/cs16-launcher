@@ -12,6 +12,7 @@ import {
   loadJSON
 } from '../lib/storage'
 import { useToast } from '../lib/toast'
+import { useT } from '../lib/i18n'
 import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
 import CondebugNotice from '../components/CondebugNotice'
 import DesktopIntegrationNotice from '../components/DesktopIntegrationNotice'
@@ -50,6 +51,7 @@ function pingTone(ping: number | null): string {
 }
 
 export default function Home(): React.JSX.Element {
+  const t = useT()
   const [detection, setDetection] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
   const [appVersion, setAppVersion] = useState<string | null>(null)
 
@@ -202,21 +204,21 @@ export default function Home(): React.JSX.Element {
   }
 
   const syncLabel = !manifestUrl
-    ? 'No content pack configured'
+    ? t.home.syncNoManifest
     : syncing
-      ? 'Syncing content…'
+      ? t.home.syncSyncing
       : dirty
-        ? 'Content changes pending'
-        : 'Content up to date'
+        ? t.home.syncPending
+        : t.home.syncUpToDate
 
   const serverView = liveServer ?? target
   const pingLabel = !liveServer
     ? target
-      ? '…'
-      : '—'
+      ? t.home.pingPending
+      : t.common.dash
     : liveServer.ping !== null
       ? `${liveServer.ping} ms`
-      : 'timeout'
+      : t.home.pingTimeout
 
   return (
     <section className="hero">
@@ -241,8 +243,8 @@ export default function Home(): React.JSX.Element {
             title={
               playState === 'steam-missing'
                 ? steamFound
-                  ? "Steam is installed, but CS 1.6 isn't — install it through Steam"
-                  : "Steam wasn't found on this system"
+                  ? t.home.steamMissingTooltipInstall
+                  : t.home.steamMissingTooltipLocate
                 : undefined
             }
           >
@@ -250,46 +252,46 @@ export default function Home(): React.JSX.Element {
               <>
                 <span className="play-button-fill" style={{ width: `${pct}%` }} />
                 <span className="play-button-label">
-                  {syncProgress ? `${syncProgress.completedFiles}/${syncProgress.totalFiles}` : 'Checking'}
+                  {syncProgress ? `${syncProgress.completedFiles}/${syncProgress.totalFiles}` : t.home.checking}
                 </span>
                 <span className="play-button-pct">{pct}%</span>
               </>
             ) : (
               <span className="play-button-label play-button-label-center">
-                {playState === 'launching' ? 'LAUNCHING…' : playState === 'update' ? 'UPDATE' : 'PLAY'}
+                {playState === 'launching' ? t.home.launching : playState === 'update' ? t.home.update : t.home.play}
               </span>
             )}
           </button>
 
           {playState === 'steam-missing' && (
             <button className="hero-fix-link" onClick={handleFixSteam}>
-              {steamFound ? 'Install CS 1.6…' : 'Locate Steam…'}
+              {steamFound ? t.home.installCs : t.home.locateSteam}
             </button>
           )}
         </div>
       </div>
 
       <div className="quickconnect-card">
-        <p className="quickconnect-label">Last server</p>
-        {!serverView && <p className="muted">No recent connections — visit Servers to connect.</p>}
+        <p className="quickconnect-label">{t.home.lastServer}</p>
+        {!serverView && <p className="muted">{t.home.noRecentConnections}</p>}
         {serverView && (
           <>
             <p className="quickconnect-name">
               {serverView.name}
               {target && (
                 <span className={`quickconnect-source-badge quickconnect-source-badge-${target.source}`}>
-                  {target.source === 'launcher' ? 'Launcher' : 'In-game'}
+                  {target.source === 'launcher' ? t.home.sourceLauncher : t.home.sourceInGame}
                 </span>
               )}
               {friendNames.length > 0 && (
-                <span className="friends-badge" title={`Known online: ${friendNames.join(', ')}`}>
+                <span className="friends-badge" title={t.home.knownOnline(friendNames.join(', '))}>
                   <Users size={11} />
                   {friendNames.length}
                 </span>
               )}
             </p>
             <p className="quickconnect-meta">
-              <span>{serverView.map || '—'}</span>
+              <span>{serverView.map || t.common.dash}</span>
               <span className="quickconnect-dot">·</span>
               <span>
                 {serverView.players}/{serverView.maxPlayers}
@@ -300,7 +302,7 @@ export default function Home(): React.JSX.Element {
               </span>
             </p>
             <button className="quickconnect-connect" disabled={connecting} onClick={handleConnectLast}>
-              {connecting ? 'Connecting…' : 'CONNECT'}
+              {connecting ? t.home.connecting : t.home.connect}
             </button>
           </>
         )}

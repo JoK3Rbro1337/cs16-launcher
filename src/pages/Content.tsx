@@ -11,6 +11,7 @@ import {
 } from '../lib/storage'
 import { CONFIG_SLOT_ID, LOCAL_VARIANT_ID } from '../lib/configVariant'
 import { useToast } from '../lib/toast'
+import { useT } from '../lib/i18n'
 import ConfirmModal from '../components/ConfirmModal'
 import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
 
@@ -164,6 +165,7 @@ function CollapsibleSection({
 }
 
 export default function Content(): React.JSX.Element {
+  const t = useT()
   const { pushToast } = useToast()
   const [detection, setDetection] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
   const [profile, setProfile] = useState<BuildProfile>(() => loadJSON(BUILD_PROFILE_KEY, emptyProfile()))
@@ -261,7 +263,7 @@ export default function Content(): React.JSX.Element {
     try {
       const preview = await window.launcher.previewUpdateLocalConfigVariant()
       if (!preview.configCfgFound) {
-        pushToast("config.cfg not found — launch the game at least once first")
+        pushToast(t.content.configNotFoundToast)
         return
       }
       setUpdatePreview(preview)
@@ -275,7 +277,7 @@ export default function Content(): React.JSX.Element {
     try {
       const snapshot = await window.launcher.commitUpdateLocalConfigVariant()
       setLocalVariant(snapshot)
-      pushToast('My Config snapshot updated', 'ok')
+      pushToast(t.content.snapshotUpdatedToast, 'ok')
     } catch (err) {
       pushToast(err instanceof Error ? err.message : String(err))
     } finally {
@@ -286,11 +288,9 @@ export default function Content(): React.JSX.Element {
 
   return (
     <section className="page">
-      <h1>Content</h1>
+      <h1>{t.content.title}</h1>
 
-      {manifestUrl && manifestError && (
-        <p className="note">Couldn't load the content pack ({manifestError}) — showing placeholder content.</p>
-      )}
+      {manifestUrl && manifestError && <p className="note">{t.content.manifestLoadError(manifestError)}</p>}
 
       {hasConfigSlot && <LaunchOptionsNotice />}
 
@@ -311,7 +311,7 @@ export default function Content(): React.JSX.Element {
                     className={`item-card${selected ? ' selected' : ''}${item.isLocal ? ' item-card-local' : ''}`}
                     onClick={() => selectItem(category.id, item.id)}
                   >
-                    {item.isLocal && <span className="item-badge-local">Local</span>}
+                    {item.isLocal && <span className="item-badge-local">{t.content.localBadge}</span>}
                     <div className="item-thumb" />
                     <span className="item-name">{item.name}</span>
                   </button>
@@ -323,19 +323,16 @@ export default function Content(): React.JSX.Element {
               <div className="my-config-panel">
                 {localVariant ? (
                   <p className="my-config-panel-meta">
-                    Snapshot taken {formatSnapshotDate(localVariant.updatedAt)}
-                    {localVariant.strippedCount > 0 &&
-                      ` · ${localVariant.strippedCount} line(s) removed for safety`}
+                    {t.content.snapshotTaken(formatSnapshotDate(localVariant.updatedAt))}
+                    {localVariant.strippedCount > 0 && ` · ${t.content.strippedLines(localVariant.strippedCount)}`}
                   </p>
                 ) : (
                   <p className="my-config-panel-meta muted">
-                    {localVariantChecked
-                      ? "No config.cfg found yet — nothing to snapshot."
-                      : 'Checking for an existing config.cfg…'}
+                    {localVariantChecked ? t.content.noConfigYet : t.content.checkingConfig}
                   </p>
                 )}
                 <button className="cp-btn-secondary" onClick={handleRequestUpdateSnapshot}>
-                  Update snapshot
+                  {t.content.updateSnapshot}
                 </button>
               </div>
             )}
@@ -345,21 +342,21 @@ export default function Content(): React.JSX.Element {
 
       {updatePreview && (
         <ConfirmModal
-          title="Update My Config Snapshot"
+          title={t.content.updateSnapshotModalTitle}
           message={
             updatePreview.hasSnapshot
-              ? `Re-reads your current in-game settings. ${updatePreview.changedLines} line(s) will change.`
-              : 'Re-reads your current in-game settings to create the first snapshot.'
+              ? t.content.updateSnapshotModalMessageChanged(updatePreview.changedLines)
+              : t.content.updateSnapshotModalMessageFirst
           }
-          confirmLabel={updatingSnapshot ? 'Updating…' : 'Update Snapshot'}
+          confirmLabel={updatingSnapshot ? t.content.updateSnapshotConfirming : t.content.updateSnapshotConfirm}
           onConfirm={handleConfirmUpdateSnapshot}
           onCancel={() => setUpdatePreview(null)}
         />
       )}
 
-      {!usingManifest && <p className="note">Content selection will apply after content-pack integration.</p>}
+      {!usingManifest && <p className="note">{t.content.noManifestNote}</p>}
 
-      <h2>Features</h2>
+      <h2>{t.content.featuresHeading}</h2>
       <div className="filter-chips content-features">
         {features.map((feature) => (
           <button
@@ -373,20 +370,20 @@ export default function Content(): React.JSX.Element {
       </div>
 
       <CollapsibleSection
-        title="System"
+        title={t.content.systemHeading}
         collapsed={collapsed.system ?? true}
         onToggle={() => toggleSection('system')}
       >
-        {detection === 'loading' && <p className="muted">Detecting Steam…</p>}
-        {detection === 'error' && <p className="muted">Steam detection failed.</p>}
+        {detection === 'loading' && <p className="muted">{t.content.detectingSteam}</p>}
+        {detection === 'error' && <p className="muted">{t.content.steamDetectionFailed}</p>}
         {detection !== 'loading' && detection !== 'error' && (
           <dl className="detect-result">
-            <dt>Steam path</dt>
-            <dd>{detection.steamPath ?? 'not found'}</dd>
-            <dt>Game path</dt>
-            <dd>{detection.gamePath ?? 'not found'}</dd>
-            <dt>Installed</dt>
-            <dd>{detection.installed ? 'yes' : 'no'}</dd>
+            <dt>{t.content.steamPath}</dt>
+            <dd>{detection.steamPath ?? t.content.notFound}</dd>
+            <dt>{t.content.gamePath}</dt>
+            <dd>{detection.gamePath ?? t.content.notFound}</dd>
+            <dt>{t.content.installed}</dt>
+            <dd>{detection.installed ? t.content.yes : t.content.no}</dd>
           </dl>
         )}
       </CollapsibleSection>

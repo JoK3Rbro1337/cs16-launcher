@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Copy } from 'lucide-react'
 import type { LaunchOptionsCheck } from '../../electron/modules/steam-launch-options'
 import { CONDEBUG_NOTICE_DISMISSED_KEY, loadJSON, saveJSON } from '../lib/storage'
+import { useT } from '../lib/i18n'
 
 const RECHECK_INTERVAL_MS = 30_000
 const CONDEBUG_RE = /(^|\s)-condebug(\s|$)/i
@@ -23,6 +24,7 @@ const CONDEBUG_RE = /(^|\s)-condebug(\s|$)/i
  * without the player having to dismiss it or restart the launcher.
  */
 export default function CondebugNotice({ className }: { className?: string }): React.JSX.Element | null {
+  const t = useT()
   const [check, setCheck] = useState<LaunchOptionsCheck | null>(null)
   const [dismissed, setDismissed] = useState(() => loadJSON(CONDEBUG_NOTICE_DISMISSED_KEY, false))
   const [copied, setCopied] = useState(false)
@@ -64,16 +66,14 @@ export default function CondebugNotice({ className }: { className?: string }): R
   return (
     <div className={`launch-options-notice${className ? ` ${className}` : ''}`}>
       <p className="launch-options-notice-text">
-        Add <code>-condebug</code> to CS 1.6's Steam Launch Options (right-click in your Steam library →
-        Properties → General) so the quick-connect card can track servers you join in-game, not just through
-        this launcher — without it, only launcher-initiated connects are tracked.
+        {t.notices.condebugTextBefore} <code>{t.notices.condebugCode}</code> {t.notices.condebugTextAfter}
       </p>
       <div className="launch-options-notice-row">
         <code className="launch-options-notice-value">{recommended}</code>
         <button className="cp-btn-secondary" onClick={handleCopy}>
-          <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
+          <Copy size={12} /> {copied ? t.notices.copied : t.notices.copy}
         </button>
-        <button className="launch-options-notice-dismiss" onClick={handleDismiss} aria-label="Dismiss">
+        <button className="launch-options-notice-dismiss" onClick={handleDismiss} aria-label={t.notices.dismiss}>
           ×
         </button>
       </div>

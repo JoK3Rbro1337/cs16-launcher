@@ -50,6 +50,8 @@ import {
   installDesktopEntry,
   removeDesktopEntry
 } from './modules/linux-desktop-integration'
+import { initLocale, getLocale, setLocale } from './modules/locale-store'
+import type { Locale } from '../locales/types'
 
 /**
  * Must match `desktopName` in package.json (which electron-builder also uses to name the
@@ -206,6 +208,9 @@ function registerIpc(): void {
   )
   ipcMain.handle('profile:import-file', (event) => importProfileFile(BrowserWindow.fromWebContents(event.sender)))
 
+  ipcMain.handle('locale:get', () => getLocale())
+  ipcMain.handle('locale:set', (_e, locale: Locale) => setLocale(locale))
+
   ipcMain.handle('updater:check', () => checkForUpdates())
   ipcMain.handle('updater:download', () => downloadUpdate())
   ipcMain.handle('updater:install', () => installUpdate())
@@ -240,7 +245,12 @@ function registerIpc(): void {
   )
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Awaited before initNotificationPoller/registerIpc so background notifications (which can
+  // fire with no window ever opened this session) and every locale IPC call always see a
+  // resolved locale — see locale-store.ts's getLocaleSync() doc comment.
+  await initLocale()
+
   electronApp.setAppUserModelId('com.cs16launcher.app')
 
   app.on('browser-window-created', (_, window) => {

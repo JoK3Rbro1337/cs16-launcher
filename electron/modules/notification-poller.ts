@@ -33,6 +33,8 @@ import { app, Notification } from 'electron'
 import { queryServer, queryPlayers, type FavoriteServer, type GameServer } from './server-browser'
 import { getKnownServers } from './known-servers'
 import { recordPlayerSightings } from './player-tracking'
+import { getLocaleSync } from './locale-store'
+import { CATALOGS } from '../../locales'
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   addressKey,
@@ -156,7 +158,12 @@ async function computeTargets(): Promise<FavoriteServer[]> {
  */
 function sendNotification(fire: FireDecision): void {
   if (!Notification.isSupported()) return
-  const n = new Notification({ title: fire.title, body: fire.body, actions: [{ type: 'button', text: 'Connect' }] })
+  const t = CATALOGS[getLocaleSync()]
+  const n = new Notification({
+    title: fire.title,
+    body: fire.body,
+    actions: [{ type: 'button', text: t.notifications.connectAction }]
+  })
   n.on('click', () => onFocusServer(fire.address))
   n.on('action', (_event, actionIndex) => {
     if (actionIndex === 0) onConnect(fire.address)
@@ -200,12 +207,21 @@ async function pollTick(): Promise<void> {
   const results: GameServer[] = targets.length > 0 ? await mapPool(targets, POLL_CONCURRENCY, pollTarget) : []
   const now = Date.now()
   const suppressed = settings.muted || isQuietHours(settings.quietHours, new Date(now))
+  const t = CATALOGS[getLocaleSync()]
 
   for (let i = 0; i < targets.length; i++) {
     const address = targets[i]
     const server = results[i]
     const key = addressKey(address)
-    const { nextState, fire } = evaluateServer(address, server, rules, pollState.get(key), now, settings.cooldownMinutes * 60_000)
+    const { nextState, fire } = evaluateServer(
+      address,
+      server,
+      rules,
+      pollState.get(key),
+      now,
+      settings.cooldownMinutes * 60_000,
+      t
+    )
     pollState.set(key, nextState)
     if (fire && !suppressed) sendNotification(fire)
   }

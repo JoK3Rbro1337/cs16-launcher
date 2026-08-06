@@ -1070,7 +1070,10 @@ body {
 }
 
 .servers-add-input {
-  max-width: 280px;
+  /* 280px clipped the uk/ru placeholder text (longer than the English source string) — see
+     harness/driver.mjs's M16 locale screenshots. Both siblings in .servers-add-row are
+     fixed-content-width (a button, an optional inline error), so there's room to grow. */
+  max-width: 340px;
   font-family: var(--font-mono);
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ImportMode, ProfileSummary } from '../lib/profile'
+import { useT } from '../lib/i18n'
 
 export default function ProfileImportModal({
   summary,
@@ -10,6 +11,7 @@ export default function ProfileImportModal({
   onConfirm: (mode: ImportMode) => void
   onCancel: () => void
 }): React.JSX.Element {
+  const t = useT()
   const [mode, setMode] = useState<ImportMode>('merge')
 
   useEffect(() => {
@@ -23,38 +25,40 @@ export default function ProfileImportModal({
   return (
     <div className="modal-overlay" onMouseDown={onCancel}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
-        <h2 className="modal-title">Import Profile</h2>
+        <h2 className="modal-title">{t.profileImportModal.title}</h2>
         <p className="modal-message">
-          Exported {new Date(summary.exportedAt).toLocaleString()} — {summary.favorites} favorite
-          {summary.favorites === 1 ? '' : 's'}, {summary.subscriptions} server source
-          {summary.subscriptions === 1 ? '' : 's'}, {summary.knownServers} known server
-          {summary.knownServers === 1 ? '' : 's'}, {summary.knownPlayers} known player
-          {summary.knownPlayers === 1 ? '' : 's'}, {summary.notificationRules} notification rule
-          {summary.notificationRules === 1 ? '' : 's'}
-          {summary.hasLocalConfigVariant ? ', and a My Config snapshot' : ''}.
+          {t.profileImportModal.summary({
+            exportedAt: new Date(summary.exportedAt).toLocaleString(),
+            favorites: t.profileImportModal.favorites(summary.favorites),
+            subscriptions: t.profileImportModal.subscriptions(summary.subscriptions),
+            knownServers: t.profileImportModal.knownServers(summary.knownServers),
+            knownPlayers: t.profileImportModal.knownPlayers(summary.knownPlayers),
+            notificationRules: t.profileImportModal.notificationRules(summary.notificationRules),
+            hasLocalConfigVariant: summary.hasLocalConfigVariant
+          })}
         </p>
 
         <div className="profile-import-modes">
           <label className="profile-import-mode">
             <input type="radio" checked={mode === 'merge'} onChange={() => setMode('merge')} />
             <span>
-              <strong>Merge</strong> — add what's new, never overwrite anything you already have.
+              <strong>{t.profileImportModal.mergeLabel}</strong> {t.profileImportModal.mergeDesc}
             </span>
           </label>
           <label className="profile-import-mode">
             <input type="radio" checked={mode === 'replace'} onChange={() => setMode('replace')} />
             <span>
-              <strong>Replace</strong> — the imported profile overwrites your current data entirely.
+              <strong>{t.profileImportModal.replaceLabel}</strong> {t.profileImportModal.replaceDesc}
             </span>
           </label>
         </div>
 
         <div className="modal-actions">
           <button className="cp-btn-secondary" onClick={onCancel}>
-            Cancel
+            {t.profileImportModal.cancel}
           </button>
           <button className="cp-btn-primary" onClick={() => onConfirm(mode)}>
-            Import
+            {t.profileImportModal.import}
           </button>
         </div>
       </div>
