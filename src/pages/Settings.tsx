@@ -10,12 +10,14 @@ import type {
 import type { UpdateStatus } from '../../electron/modules/updater'
 import type { NotificationRule, NotificationSettings, PollStatus } from '../../electron/modules/notification-poller'
 import type { KnownPlayer } from '../../electron/modules/player-tracking'
+import type { ConfigScanResult } from '../../electron/modules/config-scanner'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
 import { applyProfile, gatherProfile, isLauncherProfile, summarizeProfile, type ImportMode, type LauncherProfile } from '../lib/profile'
 import { useI18n, LOCALES, LOCALE_NAMES, type Messages } from '../lib/i18n'
 import ConfirmModal from '../components/ConfirmModal'
+import ConfigScanModal from '../components/ConfigScanModal'
 import NotificationRules from '../components/NotificationRules'
 import ProfileImportModal from '../components/ProfileImportModal'
 import {
@@ -131,6 +133,9 @@ export default function Settings(): React.JSX.Element {
   const [result, setResult] = useState<SyncResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmVerify, setConfirmVerify] = useState(false)
+  const [scanGateResult, setScanGateResult] = useState<ConfigScanResult | null>(null)
+  const [pendingSyncAction, setPendingSyncAction] = useState<SyncAction>('sync')
+  const [installingAnyway, setInstallingAnyway] = useState(false)
 
   const [itemSpeeds, setItemSpeeds] = useState<Record<string, number>>({})
   const [globalSpeed, setGlobalSpeed] = useState(0)
@@ -244,7 +249,27 @@ export default function Settings(): React.JSX.Element {
     setReduceMotionState(next)
   }
 
-  async function runSync(action: SyncAction): Promise<void> {
+  async function runSync(action: SyncAction, skipScanGate = false): Promise<void> {
+    const profile = loadJSON<BuildProfile>(BUILD_PROFILE_KEY, { selections: {}, features: {} })
+
+    // M12.5 — before touching disk, scan whatever config the active profile
+    // would actually exec. Critical findings block the sync with a dialog
+    // (file/line/offending text + an explicit override); a scan failure
+    // (e.g. can't fetch the cfg text to scan it) never blocks sync itself —
+    // only a completed scan with real critical findings does.
+    if (!skipScanGate) {
+      try {
+        const gate = await window.launcher.scanConfigGate(manifestUrl, profile)
+        if (gate && gate.counts.critical > 0) {
+          setPendingSyncAction(action)
+          setScanGateResult(gate)
+          return
+        }
+      } catch {
+        // scan itself failed — proceed to the normal sync/error flow below
+      }
+    }
+
     setLastAction(action)
     setState('syncing')
     setError(null)
@@ -255,7 +280,6 @@ export default function Settings(): React.JSX.Element {
     globalSpeedSample.current = undefined
     setGlobalSpeed(0)
     try {
-      const profile = loadJSON<BuildProfile>(BUILD_PROFILE_KEY, { selections: {}, features: {} })
       const syncResult = await window.launcher.syncContent(manifestUrl, profile)
       setResult(syncResult)
       setState('done')
@@ -593,6 +617,26 @@ export default function Settings(): React.JSX.Element {
             runSync('verify')
           }}
           onCancel={() => setConfirmVerify(false)}
+        />
+      )}
+
+      {scanGateResult && (
+        <ConfigScanModal
+          title={t.configScanner.gateTitle}
+          result={scanGateResult}
+          onClose={() => setScanGateResult(null)}
+          gate={{
+            busy: installingAnyway,
+            onInstallAnyway: async () => {
+              setInstallingAnyway(true)
+              try {
+                await runSync(pendingSyncAction, true)
+              } finally {
+                setInstallingAnyway(false)
+                setScanGateResult(null)
+              }
+            }
+          }}
         />
       )}
 

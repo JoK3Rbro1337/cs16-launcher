@@ -103,6 +103,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 import { once } from 'node:events'
 import { detectSteam } from './steam-detect'
 import { CONFIG_SLOT_ID, ensureLocalVariant } from './local-config-variant'
+import { scanConfigFiles, type ConfigScanResult } from './config-scanner'
 
 export interface ManifestFile {
   path: string
@@ -319,8 +320,43 @@ function computeDesiredFiles(
   return desired
 }
 
+/**
+ * M12.5 — every exec-cfg file the current profile would actually apply,
+ * across every layer (base/slots/features — the exec-cfg convention isn't
+ * scoped to the config slot specifically, see isExecCfg below), for
+ * pre-install scanning. Reuses computeDesiredFiles so this always matches
+ * exactly what syncContent is about to write, never a separate resolution
+ * path that could drift from it.
+ */
+export function resolveExecCfgFiles(manifest: ContentManifest, profile: BuildProfile): ManifestFile[] {
+  const desired = computeDesiredFiles(manifest, profile)
+  return [...desired.values()].filter(({ file }) => isExecCfg(file)).map(({ file }) => file)
+}
+
+async function fetchFileText(file: ManifestFile): Promise<string> {
+  const res = await fetch(file.url)
+  if (!res.ok) {
+    throw new Error(`Failed to fetch ${file.path} for scanning: HTTP ${res.status}`)
+  }
+  return res.text()
+}
+
+/** Fetches and scans a set of manifest files without touching disk — used for both per-variant badges and the pre-install gate. */
+export async function scanFiles(files: ManifestFile[]): Promise<ConfigScanResult> {
+  const inputs = await Promise.all(files.map(async (file) => ({ path: file.path, text: await fetchFileText(file) })))
+  return scanConfigFiles(inputs)
+}
+
+/** Null when the current profile has no exec-cfg files at all (e.g. "My Config" selected, which contributes none) — nothing to gate on. */
+export async function scanConfigGate(manifestUrl: string, profile: BuildProfile): Promise<ConfigScanResult | null> {
+  const manifest = await fetchManifest(manifestUrl)
+  const files = resolveExecCfgFiles(manifest, profile)
+  if (files.length === 0) return null
+  return scanFiles(files)
+}
+
 /** True for a game config that the managed exec block(s) should `exec`. */
-function isExecCfg(file: ManifestFile): boolean {
+export function isExecCfg(file: ManifestFile): boolean {
   if (file.type === 'exec-cfg') return true
   const lower = file.path.toLowerCase()
   if (!lower.startsWith('cstrike/')) return false

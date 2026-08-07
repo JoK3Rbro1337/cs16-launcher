@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import type { BuildProfile, ContentManifest } from '../../electron/modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from '../../electron/modules/local-config-variant'
+import type { ConfigScanResult } from '../../electron/modules/config-scanner'
 import {
   BUILD_PROFILE_KEY,
   MANIFEST_URL_KEY,
@@ -10,10 +11,15 @@ import {
   saveJSON
 } from '../lib/storage'
 import { CONFIG_SLOT_ID, LOCAL_VARIANT_ID } from '../lib/configVariant'
+import { classifyBand, isExecCfgFile } from '../lib/configScanner'
 import { useToast } from '../lib/toast'
 import { useT } from '../lib/i18n'
 import ConfirmModal from '../components/ConfirmModal'
 import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
+import ConfigScanModal from '../components/ConfigScanModal'
+
+/** Per-variant scan state: undefined = not requested yet, 'loading'/'error' while in flight or failed, otherwise the result. */
+type ScanState = ConfigScanResult | 'loading' | 'error' | undefined
 
 interface SkinItem {
   id: string
@@ -182,6 +188,15 @@ export default function Content(): React.JSX.Element {
   const [updatePreview, setUpdatePreview] = useState<UpdatePreview | null>(null)
   const [updatingSnapshot, setUpdatingSnapshot] = useState(false)
 
+  // M12.5 — config security scanner: one scan per config-slot variant (badges
+  // on every card), plus My Config's own snapshot (scanned server-side since
+  // its body never leaves the main process). scanRequested dedupes so a
+  // re-render doesn't re-fire an in-flight/completed variant scan.
+  const [variantScans, setVariantScans] = useState<Record<string, ScanState>>({})
+  const [localScan, setLocalScan] = useState<ScanState>(undefined)
+  const scanRequested = useRef(new Set<string>())
+  const [findingsModal, setFindingsModal] = useState<{ title: string; result: ConfigScanResult } | null>(null)
+
   const usingManifest = manifestUrl !== '' && manifest !== null
   const categories = usingManifest ? manifestToCategories(manifest) : PLACEHOLDER_CATEGORIES
   const features = usingManifest ? manifestToFeatures(manifest) : PLACEHOLDER_FEATURES
@@ -221,6 +236,38 @@ export default function Content(): React.JSX.Element {
         setManifestError(err instanceof Error ? err.message : String(err))
       })
   }, [manifestUrl])
+
+  // Scans every config-slot variant's exec-cfg files once each, as soon as
+  // the manifest is available — badges cover every card, not just the
+  // active selection. scanRequested (a ref, not state) tracks which variant
+  // ids have already been kicked off so this effect re-running (e.g. after
+  // a scan result lands and re-renders) never double-fires a request.
+  useEffect(() => {
+    if (manifest === null) return
+    const configSlot = manifest.slots.find((slot) => slot.id === CONFIG_SLOT_ID)
+    if (!configSlot) return
+    for (const variant of configSlot.variants) {
+      if (scanRequested.current.has(variant.id)) continue
+      scanRequested.current.add(variant.id)
+      setVariantScans((prev) => ({ ...prev, [variant.id]: 'loading' }))
+      window.launcher
+        .scanConfigFiles(variant.files.filter(isExecCfgFile))
+        .then((result) => setVariantScans((prev) => ({ ...prev, [variant.id]: result })))
+        .catch(() => setVariantScans((prev) => ({ ...prev, [variant.id]: 'error' })))
+    }
+  }, [manifest])
+
+  // Re-scans "My Config" whenever its snapshot changes (first-ever snapshot,
+  // or "Update snapshot") — its text lives server-side, so it's scanned
+  // there rather than shipping the body to the renderer just to filter it.
+  useEffect(() => {
+    if (!hasConfigSlot) return
+    setLocalScan('loading')
+    window.launcher
+      .scanLocalConfigVariant()
+      .then((result) => setLocalScan(result ?? undefined))
+      .catch(() => setLocalScan('error'))
+  }, [hasConfigSlot, localVariant])
 
   // Fill in defaults for slots/features that don't have a stored choice yet
   // (new manifest, or first run) without clobbering existing selections.
@@ -305,6 +352,9 @@ export default function Content(): React.JSX.Element {
             <div className="item-grid">
               {category.items.map((item) => {
                 const selected = profile.selections[category.id] === item.id
+                const isConfigSlot = category.id === CONFIG_SLOT_ID
+                const scanState = isConfigSlot ? (item.isLocal ? localScan : variantScans[item.id]) : undefined
+                const scanResult = scanState && scanState !== 'loading' && scanState !== 'error' ? scanState : null
                 return (
                   <button
                     key={item.id}
@@ -312,12 +362,51 @@ export default function Content(): React.JSX.Element {
                     onClick={() => selectItem(category.id, item.id)}
                   >
                     {item.isLocal && <span className="item-badge-local">{t.content.localBadge}</span>}
+                    {scanResult && (
+                      <span
+                        className={`item-badge-score item-badge-score-${classifyBand(scanResult.counts)}`}
+                        title={t.configScanner.safeScoreLabel}
+                      >
+                        {scanResult.safeScore}
+                      </span>
+                    )}
                     <div className="item-thumb" />
                     <span className="item-name">{item.name}</span>
                   </button>
                 )
               })}
             </div>
+
+            {category.id === CONFIG_SLOT_ID &&
+              profile.selections[category.id] &&
+              (() => {
+                const selectedId = profile.selections[category.id]
+                const selectedName = category.items.find((item) => item.id === selectedId)?.name ?? selectedId
+                const scanState = selectedId === LOCAL_VARIANT_ID ? localScan : variantScans[selectedId]
+                const scanResult = scanState && scanState !== 'loading' && scanState !== 'error' ? scanState : null
+                return (
+                  <div className="config-scan-panel">
+                    <p className="config-scan-panel-score">
+                      {scanState === 'loading' && t.configScanner.scanning}
+                      {scanState === 'error' && t.configScanner.scanUnavailable}
+                      {scanResult && (
+                        <>
+                          {t.configScanner.safeScoreLabel}: <span className="mono">{scanResult.safeScore}</span>
+                          {scanResult.findings.length > 0 && ` · ${t.configScanner.viewFindings(scanResult.findings.length)}`}
+                        </>
+                      )}
+                    </p>
+                    {scanResult && (
+                      <button
+                        className="cp-btn-secondary"
+                        onClick={() => setFindingsModal({ title: selectedName, result: scanResult })}
+                      >
+                        {t.configScanner.detailsTitle}
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
 
             {category.id === CONFIG_SLOT_ID && profile.selections[category.id] === LOCAL_VARIANT_ID && (
               <div className="my-config-panel">
@@ -339,6 +428,14 @@ export default function Content(): React.JSX.Element {
           </CollapsibleSection>
         ))}
       </div>
+
+      {findingsModal && (
+        <ConfigScanModal
+          title={findingsModal.title}
+          result={findingsModal.result}
+          onClose={() => setFindingsModal(null)}
+        />
+      )}
 
       {updatePreview && (
         <ConfirmModal

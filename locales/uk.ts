@@ -323,6 +323,38 @@ export const uk: Messages = {
     checkForUpdates: 'Перевірити оновлення'
   },
 
+  configScanner: {
+    safeScoreLabel: 'Оцінка безпеки',
+    scanning: 'Сканування…',
+    scanUnavailable: 'Не вдалося просканувати цей конфіг',
+    viewFindings: (n: number) =>
+      slavicPlural(n, { one: `${n} знахідка`, few: `${n} знахідки`, many: `${n} знахідок` }),
+    noFindings: 'Проблем не знайдено.',
+    detailsTitle: 'Результати сканування',
+    gateTitle: 'Заблоковано: критичні проблеми безпеки',
+    gateIntro: (n: number) =>
+      `У цьому конфігу ${slavicPlural(n, { one: `${n} критична знахідка`, few: `${n} критичні знахідки`, many: `${n} критичних знахідок` })} — встановлення без змін може непомітно перепідключити вас до іншого сервера, стерти прив’язки клавіш або виконати недовірені команди.`,
+    gateWarningNote: (n: number) =>
+      `Нижче також знайдено ${slavicPlural(n, { one: `${n} попередження`, few: `${n} попередження`, many: `${n} попереджень` })} — вони не блокують встановлення.`,
+    installAnyway: 'Все одно встановити',
+    severityCritical: 'Критично',
+    severityWarning: 'Попередження',
+    severityInfo: 'Інфо',
+    fileLabel: 'Файл',
+    lineLabel: 'Рядок',
+    ruleServerHijack: (cmd: string) => `«${cmd}» може непомітно перепідключити вас до іншого сервера`,
+    ruleRcon: (cmd: string) => `«${cmd}» може розкрити або повторно використати дані rcon-адміністрування`,
+    ruleMotdWrite: 'Перезаписує файл повідомлення дня (motd) сервера',
+    ruleExecOutsideCstrike: (path: string) => `Виконує файл поза папкою гри: ${path}`,
+    ruleUnbindallNoRestore: 'Скидає всі прив’язки клавіш і ніколи не відновлює їх',
+    ruleAliasScript: (name: string) => `Визначає скриптовий аліас («${name}») — ланцюжок команд, що виконається пізніше`,
+    ruleMultiCommandBind: 'Прив’язка запускає кілька команд у ланцюжку',
+    ruleWaitBind: 'Прив’язка використовує «wait» для затримки в скрипті',
+    ruleSetinfoUnknownKey: (key: string) => `Встановлює нерозпізнаний ключ info: ${key}`,
+    ruleUnknownCvar: (name: string) => `Нерозпізнана команда чи cvar: ${name}`,
+    ruleValueOutOfRange: (detail: string) => `Значення поза очікуваним діапазоном: ${detail}`
+  },
+
   notificationRules: {
     typePlayerThreshold: 'Поріг кількості гравців',
     typeEmptyToActive: 'Порожній → активний',

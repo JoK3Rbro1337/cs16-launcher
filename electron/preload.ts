@@ -6,8 +6,9 @@ import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sour
 import type { KnownServerEntry } from './modules/known-servers'
 import type { KnownPlayer, FriendsOnlineEntry } from './modules/player-tracking'
 import type { NeighborhoodScanResult } from './modules/neighborhood-scan'
-import type { BackedUpFile, BuildProfile, ContentManifest, SyncProgress, SyncResult } from './modules/content-sync'
+import type { BackedUpFile, BuildProfile, ContentManifest, ManifestFile, SyncProgress, SyncResult } from './modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
+import type { ConfigScanResult } from './modules/config-scanner'
 import type { UpdateStatus } from './modules/updater'
 import type { LiveSession, SessionHistoryEntry } from './modules/session-watcher'
 import type { NotificationRule, NotificationSettings, PollStatus } from './modules/notification-poller'
@@ -96,6 +97,10 @@ const launcher = {
     snapshot: LocalVariantSnapshot | null,
     mode: 'merge' | 'replace'
   ): Promise<LocalVariantSnapshot | null> => ipcRenderer.invoke('config:import-local-variant', snapshot, mode),
+  scanConfigFiles: (files: ManifestFile[]): Promise<ConfigScanResult> => ipcRenderer.invoke('config:scan-files', files),
+  scanConfigGate: (manifestUrl: string, profile: BuildProfile): Promise<ConfigScanResult | null> =>
+    ipcRenderer.invoke('config:scan-gate', manifestUrl, profile),
+  scanLocalConfigVariant: (): Promise<ConfigScanResult | null> => ipcRenderer.invoke('config:scan-local-variant'),
   exportProfile: (data: unknown): Promise<{ canceled: boolean }> => ipcRenderer.invoke('profile:export', data),
   importProfileFile: (): Promise<{ canceled: boolean; data?: unknown }> =>
     ipcRenderer.invoke('profile:import-file'),

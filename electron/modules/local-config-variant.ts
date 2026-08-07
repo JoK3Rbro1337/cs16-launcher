@@ -25,6 +25,15 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { detectSteam } from './steam-detect'
+import {
+  firstToken,
+  splitTopLevelStatements,
+  tokenizeArgs,
+  scanConfigFile,
+  computeSafeScore,
+  type ConfigScanResult,
+  type ScanCounts
+} from './config-scanner'
 
 /** Convention: the config slot's id in any manifest that defines one. */
 export const CONFIG_SLOT_ID = 'config'
@@ -57,20 +66,28 @@ export interface UpdatePreview {
   configCfgFound: boolean
 }
 
-function firstToken(trimmed: string): string {
-  const match = trimmed.match(/^"?([A-Za-z_][\w]*)"?/)
-  return match ? match[1].toLowerCase() : ''
-}
-
+/**
+ * Statement-level check (reuses config-scanner.ts's parser — see M12.5):
+ * splits on the engine's own `;` statement separator, so a blocked command
+ * chained after another statement on the same line (`name "x"; rcon ...`) is
+ * caught, not just a line whose very first token is blocked. A bind's target
+ * string gets the same treatment recursively, since it's executed as its own
+ * command line when the key is pressed.
+ */
 function isLineSafe(line: string): boolean {
   const trimmed = line.trim()
   if (trimmed === '' || trimmed.startsWith('//')) return true
-  const cmd = firstToken(trimmed)
-  if (BLOCKED_COMMANDS.includes(cmd)) return false
-  if (cmd === 'bind') {
-    const lower = trimmed.toLowerCase()
-    for (const blocked of BLOCKED_COMMANDS) {
-      if (new RegExp(`(^|[\\s"])${blocked}([\\s"]|$)`).test(lower)) return false
+  for (const rawStatement of splitTopLevelStatements(trimmed)) {
+    const stmt = rawStatement.trim()
+    if (stmt === '') continue
+    const cmd = firstToken(stmt)
+    if (BLOCKED_COMMANDS.includes(cmd)) return false
+    if (cmd === 'bind') {
+      const target = tokenizeArgs(stmt)[2] ?? ''
+      for (const rawSub of splitTopLevelStatements(target)) {
+        const sub = rawSub.trim()
+        if (sub !== '' && BLOCKED_COMMANDS.includes(firstToken(sub))) return false
+      }
     }
   }
   return true
@@ -128,6 +145,16 @@ export async function loadLocalVariant(): Promise<LocalVariantSnapshot | null> {
   } catch {
     return null
   }
+}
+
+/** M12.5 — scans the stored "My Config" snapshot's already-sanitized body. Null if no snapshot exists yet. */
+export async function scanLocalVariant(): Promise<ConfigScanResult | null> {
+  const snapshot = await loadLocalVariant()
+  if (!snapshot) return null
+  const findings = scanConfigFile({ path: 'cstrike/config.cfg', text: snapshot.body })
+  const counts: ScanCounts = { critical: 0, warning: 0, info: 0 }
+  for (const f of findings) counts[f.severity]++
+  return { findings, safeScore: computeSafeScore(counts), counts }
 }
 
 async function saveLocalVariant(snapshot: LocalVariantSnapshot): Promise<void> {

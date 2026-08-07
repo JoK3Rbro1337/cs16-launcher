@@ -34,13 +34,14 @@ import {
   type NotificationSettings
 } from './modules/notification-poller'
 import { getMapThumbnail } from './modules/map-thumbnails'
-import { fetchManifest, syncContent, type BuildProfile } from './modules/content-sync'
+import { fetchManifest, syncContent, scanFiles, scanConfigGate, type BuildProfile, type ManifestFile } from './modules/content-sync'
 import {
   ensureLocalVariant,
   loadLocalVariant,
   previewUpdateLocalVariant,
   commitUpdateLocalVariant,
   importLocalVariant,
+  scanLocalVariant,
   type LocalVariantSnapshot
 } from './modules/local-config-variant'
 import { exportProfile, importProfileFile } from './modules/profile'
@@ -202,6 +203,9 @@ function registerIpc(): void {
     'config:import-local-variant',
     (_e, snapshot: LocalVariantSnapshot | null, mode: 'merge' | 'replace') => importLocalVariant(snapshot, mode)
   )
+  ipcMain.handle('config:scan-files', (_e, files: ManifestFile[]) => scanFiles(files))
+  ipcMain.handle('config:scan-gate', (_e, manifestUrl: string, profile: BuildProfile) => scanConfigGate(manifestUrl, profile))
+  ipcMain.handle('config:scan-local-variant', () => scanLocalVariant())
 
   ipcMain.handle('profile:export', (event, data: unknown) =>
     exportProfile(BrowserWindow.fromWebContents(event.sender), data)

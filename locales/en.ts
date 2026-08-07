@@ -328,6 +328,38 @@ export const en = {
     checkForUpdates: 'Check for Updates'
   },
 
+  // M12.5 — config security scanner. See electron/modules/config-scanner.ts
+  // and src/lib/configScanner.ts (rule -> message mapping).
+  configScanner: {
+    safeScoreLabel: 'Safe Score',
+    scanning: 'Scanning…',
+    scanUnavailable: "Couldn't scan this config",
+    viewFindings: (n: number) => plural(n, 'finding', 'findings'),
+    noFindings: 'No issues found.',
+    detailsTitle: 'Scan Findings',
+    gateTitle: 'Blocked: Security Findings',
+    gateIntro: (n: number) =>
+      `This config has ${plural(n, 'critical finding', 'critical findings')} — installing it as-is could hijack your connection, wipe your key bindings, or run untrusted commands.`,
+    gateWarningNote: (n: number) => `${plural(n, 'warning', 'warnings')} also found below — these don't block install.`,
+    installAnyway: 'Install Anyway',
+    severityCritical: 'Critical',
+    severityWarning: 'Warning',
+    severityInfo: 'Info',
+    fileLabel: 'File',
+    lineLabel: 'Line',
+    ruleServerHijack: (cmd: string) => `"${cmd}" can silently reconnect you to a different server`,
+    ruleRcon: (cmd: string) => `"${cmd}" can leak or replay remote-admin (rcon) credentials`,
+    ruleMotdWrite: 'Overwrites the server message-of-the-day file',
+    ruleExecOutsideCstrike: (path: string) => `Execs a file outside the game folder: ${path}`,
+    ruleUnbindallNoRestore: 'Clears every key binding and never rebinds them',
+    ruleAliasScript: (name: string) => `Defines a script alias ("${name}") — a command chain that runs later`,
+    ruleMultiCommandBind: 'Bind runs multiple chained commands',
+    ruleWaitBind: 'Bind uses "wait" to time a scripted sequence',
+    ruleSetinfoUnknownKey: (key: string) => `Sets an unrecognized info key: ${key}`,
+    ruleUnknownCvar: (name: string) => `Unrecognized command or cvar: ${name}`,
+    ruleValueOutOfRange: (detail: string) => `Value outside the expected range: ${detail}`
+  },
+
   notificationRules: {
     typePlayerThreshold: 'Player count threshold',
     typeEmptyToActive: 'Empty → active',

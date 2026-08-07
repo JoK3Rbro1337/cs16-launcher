@@ -386,6 +386,7 @@ body {
 }
 
 .item-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -441,6 +442,55 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   line-height: 1.4;
+}
+
+/* Safe Score badge — small pill, top-left of a config-slot item-card (the
+   "Local" badge already owns top-right). Colored by classifyBand's severity
+   band, not the raw number, so it reads at a glance. */
+.item-badge-score {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--cs-bg-1);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.item-badge-score-ok {
+  color: var(--cs-ok);
+}
+
+.item-badge-score-warn {
+  color: var(--cs-warn);
+}
+
+.item-badge-score-danger {
+  color: var(--cs-danger);
+}
+
+.config-scan-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--cs-bg-1);
+}
+
+.config-scan-panel-score {
+  margin: 0;
+  font-size: 12px;
+  color: var(--cs-text-mid);
+}
+
+.config-scan-panel-score .mono {
+  font-weight: 600;
 }
 
 .my-config-panel {
@@ -2020,6 +2070,113 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.cp-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cs-danger);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cp-btn-danger:hover:not(:disabled) {
+  background: rgba(226, 85, 73, 0.12);
+}
+
+.cp-btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* M12.5 — config security scanner findings dialog (ConfigScanModal). */
+.modal-wide {
+  width: 640px;
+}
+
+.scan-findings-list {
+  max-height: 50vh;
+  margin-bottom: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scan-findings-file-path {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cs-text-mid);
+}
+
+.scan-finding-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--cs-border);
+}
+
+.scan-finding-row:first-of-type {
+  border-top: none;
+}
+
+.scan-finding-severity {
+  flex-shrink: 0;
+  width: 60px;
+  padding-top: 1px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.scan-finding-severity-critical {
+  color: var(--cs-danger);
+}
+
+.scan-finding-severity-warning {
+  color: var(--cs-warn);
+}
+
+.scan-finding-severity-info {
+  color: var(--cs-text-mid);
+}
+
+.scan-finding-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.scan-finding-message {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--cs-text-hi);
+}
+
+.scan-finding-text {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--cs-bg-2);
+  color: var(--cs-text-mid);
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre;
 }
 
 /* ---------------------------------------------------------------------- */
