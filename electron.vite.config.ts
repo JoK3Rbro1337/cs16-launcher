@@ -19,7 +19,15 @@ export default defineConfig({
     root: '.',
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'index.html') }
+        // Two independent HTML entries sharing one renderer build/resolve
+        // config: index.html (the main app) and overlay.html (M15's
+        // crosshair overlay window — see src/overlay/main.ts). Kept as a
+        // separate entry rather than a mode of the main app so its bundle
+        // never pulls in React Router-equivalent state, fonts, or app CSS.
+        input: {
+          index: resolve(__dirname, 'index.html'),
+          overlay: resolve(__dirname, 'overlay.html')
+        }
       }
     },
     resolve: {

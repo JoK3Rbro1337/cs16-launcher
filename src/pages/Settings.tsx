@@ -11,15 +11,39 @@ import type { UpdateStatus } from '../../electron/modules/updater'
 import type { NotificationRule, NotificationSettings, PollStatus } from '../../electron/modules/notification-poller'
 import type { KnownPlayer } from '../../electron/modules/player-tracking'
 import type { ConfigScanResult } from '../../electron/modules/config-scanner'
+import type { CrosshairPlatformInfo, CrosshairSettings, CrosshairShape } from '../../electron/modules/crosshair-overlay'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
 import { applyProfile, gatherProfile, isLauncherProfile, summarizeProfile, type ImportMode, type LauncherProfile } from '../lib/profile'
 import { useI18n, LOCALES, LOCALE_NAMES, type Messages } from '../lib/i18n'
+import { drawCrosshair } from '../lib/crosshair'
 import ConfirmModal from '../components/ConfirmModal'
 import ConfigScanModal from '../components/ConfigScanModal'
 import NotificationRules from '../components/NotificationRules'
 import ProfileImportModal from '../components/ProfileImportModal'
+
+/**
+ * Mirrors CROSSHAIR_SHAPES/CROSSHAIR_COLOR_PRESETS in
+ * electron/modules/crosshair-settings.ts — duplicated rather than imported
+ * as a value, same convention as configVariant.ts's sentinel ids (the
+ * renderer only pulls types from electron/modules, never runtime values).
+ */
+const CROSSHAIR_SHAPES: CrosshairShape[] = ['dot', 'cross', 'circle', 'cross-dot']
+const CROSSHAIR_COLOR_PRESETS = ['#39ff14', '#00eaff', '#ff3b30', '#ffe135', '#ffffff', '#ff2fd6']
+
+function crosshairShapeLabel(t: Messages, shape: CrosshairShape): string {
+  switch (shape) {
+    case 'dot':
+      return t.settings.crosshairShapeDot
+    case 'cross':
+      return t.settings.crosshairShapeCross
+    case 'circle':
+      return t.settings.crosshairShapeCircle
+    case 'cross-dot':
+      return t.settings.crosshairShapeCrossDot
+  }
+}
 import {
   DEFAULT_SUBSCRIPTION_ID,
   getBattlemetricsEnabled,
@@ -174,6 +198,11 @@ export default function Settings(): React.JSX.Element {
   const [importing, setImporting] = useState(false)
   const [pendingImport, setPendingImport] = useState<LauncherProfile | null>(null)
 
+  const [crosshair, setCrosshair] = useState<CrosshairSettings | null>(null)
+  const [crosshairPlatformInfo, setCrosshairPlatformInfo] = useState<CrosshairPlatformInfo | null>(null)
+  const [confirmCrosshairDisclosure, setConfirmCrosshairDisclosure] = useState(false)
+  const crosshairPreviewRef = useRef<HTMLCanvasElement | null>(null)
+
   useEffect(() => {
     return window.launcher.onSyncProgress((p) => {
       setProgress(p)
@@ -226,6 +255,49 @@ export default function Settings(): React.JSX.Element {
   }
 
   useEffect(refreshDesktopIntegration, [])
+
+  useEffect(() => {
+    window.launcher.getCrosshairSettings().then(setCrosshair).catch(() => {})
+    window.launcher.getCrosshairPlatformInfo().then(setCrosshairPlatformInfo).catch(() => {})
+  }, [])
+
+  // Live preview: the same drawCrosshair() the overlay window itself uses, so this is
+  // guaranteed to match exactly rather than risk drifting from a lookalike re-implementation.
+  useEffect(() => {
+    const canvas = crosshairPreviewRef.current
+    if (!canvas || !crosshair) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    drawCrosshair(ctx, canvas.width, canvas.height, crosshair)
+  }, [crosshair])
+
+  async function applyCrosshairSettings(partial: Partial<CrosshairSettings>): Promise<void> {
+    const next = await window.launcher.updateCrosshairSettings(partial)
+    setCrosshair(next)
+  }
+
+  function handleToggleCrosshairEnabled(): void {
+    if (!crosshair) return
+    if (!crosshair.enabled && !crosshair.disclosureSeen) {
+      setConfirmCrosshairDisclosure(true)
+      return
+    }
+    applyCrosshairSettings({ enabled: !crosshair.enabled })
+  }
+
+  function handleConfirmCrosshairDisclosure(): void {
+    setConfirmCrosshairDisclosure(false)
+    applyCrosshairSettings({ enabled: true, disclosureSeen: true })
+  }
+
+  function handleToggleCrosshairOutline(): void {
+    if (!crosshair) return
+    applyCrosshairSettings({ outline: !crosshair.outline })
+  }
+
+  function handleCrosshairDisplayChange(value: string): void {
+    applyCrosshairSettings({ displayId: value === 'auto' ? null : Number(value) })
+  }
 
   useEffect(() => {
     window.launcher.getAppVersion().then(setAppVersion)
@@ -1067,6 +1139,199 @@ export default function Settings(): React.JSX.Element {
             </div>
           </div>
         </>
+      )}
+
+      <h2 className="section-header">{t.settings.sectionCrosshair}</h2>
+      <div className="settings-card">
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">{t.settings.crosshairEnabledLabel}</p>
+            <p className="settings-row-desc">{t.settings.crosshairEnabledDesc}</p>
+          </div>
+          <button
+            className={`toggle-switch${crosshair?.enabled ? ' on' : ''}`}
+            role="switch"
+            aria-checked={!!crosshair?.enabled}
+            aria-label={t.settings.crosshairEnabledAriaLabel}
+            disabled={!crosshair}
+            onClick={handleToggleCrosshairEnabled}
+          >
+            <span className="toggle-switch-thumb" />
+          </button>
+        </div>
+
+        {crosshairPlatformInfo?.isWayland && <p className="settings-row-desc crosshair-wayland-hint">{t.settings.crosshairWaylandHint}</p>}
+
+        {crosshair?.enabled && (
+          <>
+            <div className="crosshair-preview-card">
+              <canvas ref={crosshairPreviewRef} className="crosshair-preview-canvas" width={280} height={160} />
+            </div>
+
+            <div className="settings-row">
+              <p className="settings-row-label">{t.settings.crosshairShapeLabel}</p>
+              <div className="filter-chips">
+                {CROSSHAIR_SHAPES.map((shape) => (
+                  <button
+                    key={shape}
+                    className={`filter-chip${crosshair.shape === shape ? ' active' : ''}`}
+                    onClick={() => applyCrosshairSettings({ shape })}
+                  >
+                    {crosshairShapeLabel(t, shape)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="settings-row settings-row-slider">
+              <p className="settings-row-label crosshair-slider-label">{t.settings.crosshairSizeLabel}</p>
+              <input
+                type="range"
+                className="cp-slider"
+                min={2}
+                max={64}
+                value={crosshair.size}
+                onChange={(e) => applyCrosshairSettings({ size: Number(e.target.value) })}
+              />
+              <span className="crosshair-slider-value mono">{crosshair.size}</span>
+            </div>
+
+            <div className="settings-row settings-row-slider">
+              <p className="settings-row-label crosshair-slider-label">{t.settings.crosshairThicknessLabel}</p>
+              <input
+                type="range"
+                className="cp-slider"
+                min={1}
+                max={12}
+                value={crosshair.thickness}
+                onChange={(e) => applyCrosshairSettings({ thickness: Number(e.target.value) })}
+              />
+              <span className="crosshair-slider-value mono">{crosshair.thickness}</span>
+            </div>
+
+            {(crosshair.shape === 'cross' || crosshair.shape === 'cross-dot') && (
+              <div className="settings-row settings-row-slider">
+                <p className="settings-row-label crosshair-slider-label">{t.settings.crosshairGapLabel}</p>
+                <input
+                  type="range"
+                  className="cp-slider"
+                  min={0}
+                  max={32}
+                  value={crosshair.gap}
+                  onChange={(e) => applyCrosshairSettings({ gap: Number(e.target.value) })}
+                />
+                <span className="crosshair-slider-value mono">{crosshair.gap}</span>
+              </div>
+            )}
+
+            <div className="settings-row settings-row-slider">
+              <p className="settings-row-label crosshair-slider-label">{t.settings.crosshairOpacityLabel}</p>
+              <input
+                type="range"
+                className="cp-slider"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={crosshair.opacity}
+                onChange={(e) => applyCrosshairSettings({ opacity: Number(e.target.value) })}
+              />
+              <span className="crosshair-slider-value mono">{Math.round(crosshair.opacity * 100)}%</span>
+            </div>
+
+            <div className="settings-row settings-row-slider">
+              <p className="settings-row-label crosshair-slider-label">{t.settings.crosshairOffsetXLabel}</p>
+              <input
+                type="range"
+                className="cp-slider"
+                min={-300}
+                max={300}
+                value={crosshair.offsetX}
+                onChange={(e) => applyCrosshairSettings({ offsetX: Number(e.target.value) })}
+              />
+              <span className="crosshair-slider-value mono">{crosshair.offsetX}</span>
+            </div>
+
+            <div className="settings-row settings-row-slider">
+              <p className="settings-row-label crosshair-slider-label">{t.settings.crosshairOffsetYLabel}</p>
+              <input
+                type="range"
+                className="cp-slider"
+                min={-300}
+                max={300}
+                value={crosshair.offsetY}
+                onChange={(e) => applyCrosshairSettings({ offsetY: Number(e.target.value) })}
+              />
+              <span className="crosshair-slider-value mono">{crosshair.offsetY}</span>
+            </div>
+
+            <div className="settings-row">
+              <p className="settings-row-label">{t.settings.crosshairColorLabel}</p>
+              <div className="crosshair-color-row">
+                {CROSSHAIR_COLOR_PRESETS.map((c) => (
+                  <button
+                    key={c}
+                    className={`crosshair-color-swatch${crosshair.color === c ? ' selected' : ''}`}
+                    style={{ background: c }}
+                    aria-label={c}
+                    onClick={() => applyCrosshairSettings({ color: c })}
+                  />
+                ))}
+                <input
+                  type="color"
+                  className="crosshair-color-custom"
+                  aria-label={t.settings.crosshairCustomColorAriaLabel}
+                  value={crosshair.color}
+                  onChange={(e) => applyCrosshairSettings({ color: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">{t.settings.crosshairOutlineLabel}</p>
+                <p className="settings-row-desc">{t.settings.crosshairOutlineDesc}</p>
+              </div>
+              <button
+                className={`toggle-switch${crosshair.outline ? ' on' : ''}`}
+                role="switch"
+                aria-checked={crosshair.outline}
+                aria-label={t.settings.crosshairOutlineAriaLabel}
+                onClick={handleToggleCrosshairOutline}
+              >
+                <span className="toggle-switch-thumb" />
+              </button>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">{t.settings.crosshairDisplayLabel}</p>
+                <p className="settings-row-desc">{t.settings.crosshairDisplayDesc}</p>
+              </div>
+              <select
+                className="cp-input crosshair-display-select"
+                value={crosshair.displayId ?? 'auto'}
+                onChange={(e) => handleCrosshairDisplayChange(e.target.value)}
+              >
+                <option value="auto">{t.settings.crosshairDisplayAuto}</option>
+                {crosshairPlatformInfo?.displays.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
+      </div>
+
+      {confirmCrosshairDisclosure && (
+        <ConfirmModal
+          title={t.settings.crosshairDisclosureModalTitle}
+          message={t.settings.crosshairDisclosureModalMessage}
+          confirmLabel={t.settings.crosshairDisclosureConfirm}
+          onConfirm={handleConfirmCrosshairDisclosure}
+          onCancel={() => setConfirmCrosshairDisclosure(false)}
+        />
       )}
 
       <h2 className="section-header">{t.settings.sectionPreferences}</h2>

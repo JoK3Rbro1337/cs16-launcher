@@ -52,6 +52,13 @@ import {
   removeDesktopEntry
 } from './modules/linux-desktop-integration'
 import { initLocale, getLocale, setLocale } from './modules/locale-store'
+import {
+  initCrosshairOverlay,
+  getCrosshairSettings,
+  updateCrosshairSettings,
+  getCrosshairPlatformInfo,
+  type CrosshairSettings
+} from './modules/crosshair-overlay'
 import type { Locale } from '../locales/types'
 
 /**
@@ -215,6 +222,10 @@ function registerIpc(): void {
   ipcMain.handle('locale:get', () => getLocale())
   ipcMain.handle('locale:set', (_e, locale: Locale) => setLocale(locale))
 
+  ipcMain.handle('crosshair:get-settings', () => getCrosshairSettings())
+  ipcMain.handle('crosshair:update-settings', (_e, partial: Partial<CrosshairSettings>) => updateCrosshairSettings(partial))
+  ipcMain.handle('crosshair:get-platform-info', () => getCrosshairPlatformInfo())
+
   ipcMain.handle('updater:check', () => checkForUpdates())
   ipcMain.handle('updater:download', () => downloadUpdate())
   ipcMain.handle('updater:install', () => installUpdate())
@@ -295,6 +306,8 @@ app.whenReady().then(async () => {
       }
     }
   })
+
+  await initCrosshairOverlay()
 
   registerIpc()
   createWindow()

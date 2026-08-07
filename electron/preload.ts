@@ -9,6 +9,7 @@ import type { NeighborhoodScanResult } from './modules/neighborhood-scan'
 import type { BackedUpFile, BuildProfile, ContentManifest, ManifestFile, SyncProgress, SyncResult } from './modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
 import type { ConfigScanResult } from './modules/config-scanner'
+import type { CrosshairPlatformInfo, CrosshairSettings } from './modules/crosshair-overlay'
 import type { UpdateStatus } from './modules/updater'
 import type { LiveSession, SessionHistoryEntry } from './modules/session-watcher'
 import type { NotificationRule, NotificationSettings, PollStatus } from './modules/notification-poller'
@@ -124,6 +125,15 @@ const launcher = {
       callback(status)
     ipcRenderer.on('updater:status', listener)
     return () => ipcRenderer.removeListener('updater:status', listener)
+  },
+  getCrosshairSettings: (): Promise<CrosshairSettings> => ipcRenderer.invoke('crosshair:get-settings'),
+  updateCrosshairSettings: (partial: Partial<CrosshairSettings>): Promise<CrosshairSettings> =>
+    ipcRenderer.invoke('crosshair:update-settings', partial),
+  getCrosshairPlatformInfo: (): Promise<CrosshairPlatformInfo> => ipcRenderer.invoke('crosshair:get-platform-info'),
+  onCrosshairSettingsChanged: (callback: (settings: CrosshairSettings) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, settings: CrosshairSettings): void => callback(settings)
+    ipcRenderer.on('crosshair:settings', listener)
+    return () => ipcRenderer.removeListener('crosshair:settings', listener)
   },
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
