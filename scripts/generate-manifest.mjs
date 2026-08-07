@@ -73,6 +73,22 @@ function usageError(message) {
   process.exit(1)
 }
 
+function fatalError(message) {
+  console.error(`Error: ${message}`)
+  process.exit(1)
+}
+
+/**
+ * Must match LOCAL_VARIANT_ID in src/lib/configVariant.ts and
+ * electron/modules/local-config-variant.ts — reserved for the client-only
+ * "My Config" pseudo-variant (whatever the player's own config.cfg already
+ * has). A real manifest defining a slot variant with this id would collide
+ * with that sentinel: content-sync.ts's slot lookup and Content.tsx's
+ * item list both assume no manifest variant ever uses it (see
+ * local-config-variant.ts's module doc for the full contract).
+ */
+const RESERVED_LOCAL_VARIANT_ID = 'my-config'
+
 async function isDir(path) {
   const s = await stat(path).catch(() => null)
   return s?.isDirectory() ?? false
@@ -199,6 +215,15 @@ async function main() {
       const slotLabel = await readLabel(slotDir, slotId)
       const variants = []
       for (const variantId of (await listDirs(slotDir)).sort()) {
+        if (variantId === RESERVED_LOCAL_VARIANT_ID) {
+          fatalError(
+            `slots/${slotId}/${RESERVED_LOCAL_VARIANT_ID}/ collides with the reserved local-variant id "${RESERVED_LOCAL_VARIANT_ID}" ` +
+              `(see LOCAL_VARIANT_ID in src/lib/configVariant.ts / electron/modules/local-config-variant.ts). ` +
+              `A manifest can never publish a variant with this id — it's reserved for the client-only "My Config" ` +
+              `pseudo-variant, and content-sync/Content.tsx both assume no real variant ever uses it. ` +
+              `Rename or remove slots/${slotId}/${RESERVED_LOCAL_VARIANT_ID}/ and try again.`
+          )
+        }
         const variantDir = join(slotDir, variantId)
         const variantLabel = await readLabel(variantDir, variantId)
         const variantFiles = await collectFiles(
