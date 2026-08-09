@@ -305,7 +305,30 @@ export const ru: Messages = {
     addedToMenuToast: 'Добавлено в меню приложений',
     removedFromMenuToast: 'Удалено из меню приложений',
 
-    sectionCrosshair: 'Прицел поверх игры',
+    sectionNativeCrosshair: 'Нативный прицел',
+    nativeCrosshairIntro:
+      'Устанавливает собственные cvar-параметры прицела CS 1.6 — работает в эксклюзивном полноэкранном режиме и на Wayland, без отдельного окна-оверлея. Рекомендуется вместо оверлея ниже, если вам не нужны его дополнительные формы или смещение для нескольких мониторов.',
+    nativeCrosshairEnabledLabel: 'Включить',
+    nativeCrosshairEnabledDesc: 'Записывает cl_crosshair_color/_size/_translucent и cl_dynamiccrosshair через управляемый cfg.',
+    nativeCrosshairEnabledAriaLabel: 'Нативный прицел',
+    nativeCrosshairSizeLabel: 'Размер',
+    nativeCrosshairSizeSmall: 'Маленький',
+    nativeCrosshairSizeMedium: 'Средний',
+    nativeCrosshairSizeLarge: 'Большой',
+    nativeCrosshairColorLabel: 'Цвет',
+    nativeCrosshairCustomColorAriaLabel: 'Свой цвет',
+    nativeCrosshairTranslucentLabel: 'Полупрозрачный',
+    nativeCrosshairTranslucentDesc: 'Слегка прозрачный прицел.',
+    nativeCrosshairTranslucentAriaLabel: 'Полупрозрачный прицел',
+    nativeCrosshairDynamicLabel: 'Динамический',
+    nativeCrosshairDynamicDesc: 'Прицел расширяется в зависимости от неточности оружия при движении или стрельбе.',
+    nativeCrosshairDynamicAriaLabel: 'Динамический прицел',
+    nativeCrosshairAppliedHint: 'Применено к конфигурации CS 1.6.',
+    nativeCrosshairNotAppliedHint: 'Установка CS 1.6 ещё не найдена — применится, как только она будет обнаружена.',
+
+    sectionCrosshair: 'Прицел поверх игры (расширенно)',
+    crosshairOverlayIntro:
+      'Отдельное окно на экране вместо cvar-параметра игры — больше форм и смещение для нескольких мониторов ценой оговорок ниже. Предпочитайте нативный прицел выше, если они вам не нужны.',
     crosshairEnabledLabel: 'Включить прицел',
     crosshairEnabledDesc:
       'Выключено по умолчанию. Показывает прицел поверх CS 1.6 только пока игра запущена, и автоматически скрывается всё остальное время.',
@@ -327,6 +350,12 @@ export const ru: Messages = {
     crosshairOpacityLabel: 'Непрозрачность',
     crosshairOffsetXLabel: 'Смещение X',
     crosshairOffsetYLabel: 'Смещение Y',
+    crosshairNudgeDecrementAriaLabel: 'Сдвинуть на 1px влево/вверх',
+    crosshairNudgeIncrementAriaLabel: 'Сдвинуть на 1px вправо/вниз',
+    crosshairNudgeResetLabel: 'Центрировать',
+    crosshairNudgeResetDesc:
+      'Если оверлей не попадает точно в центр игры для вашей настройки, используйте кнопки ±1px выше, чтобы подстроить его во время игры — единой формулы, работающей одинаково для всех компоузеров и режимов окна, не существует.',
+    crosshairNudgeResetButton: 'Сбросить в центр',
     crosshairColorLabel: 'Цвет',
     crosshairCustomColorAriaLabel: 'Свой цвет',
     crosshairOutlineLabel: 'Обводка',
@@ -335,6 +364,33 @@ export const ru: Messages = {
     crosshairDisplayLabel: 'Дисплей',
     crosshairDisplayDesc: 'На каком мониторе рисовать прицел — для систем с несколькими мониторами.',
     crosshairDisplayAuto: 'Авто',
+    crosshairKwinHintTitle: 'Прицел всё ещё прячется за игрой в KDE Plasma?',
+    crosshairKwinHintDesc:
+      'Оверлей автоматически пытается оставаться поверх, но некоторые настройки KWin не всегда надёжно удерживают его над окном игры, когда оно в фокусе. Правило окон KWin гарантирует это — скопируйте шаги ниже и добавьте правило в Параметрах системы.',
+    crosshairScaleLabel: 'Масштаб под разрешение игры',
+    crosshairScaleDesc:
+      'Если CS 1.6 рендерится в более низком разрешении, чем ваш монитор (и масштабируется на весь экран), оверлей должен учитывать этот масштаб, иначе он будет слишком маленьким. Введите разрешение игры или определите его автоматически из параметров запуска Steam.',
+    crosshairScaleCurrent: (n: string) => `Текущий: ${n}×`,
+    crosshairScaleWidthLabel: 'Ширина игры',
+    crosshairScaleHeightLabel: 'Высота игры',
+    crosshairScaleAutoDetectButton: 'Определить из параметров запуска',
+    crosshairScaleAutoDetectNotFound: 'В параметрах запуска Steam не найдено разрешение -w/-h.',
+    crosshairScaleSuggested: (n: string) => `Предложено: ${n}×`,
+    crosshairScaleApplyButton: 'Применить',
+    crosshairDebugAlignmentLabel: 'Направляющая выравнивания (debug)',
+    crosshairDebugAlignmentDesc:
+      'Временно заменяет прицел линиями на всю ширину/высоту окна, чтобы визуально проверить, находится ли оверлей точно по центру относительно игры. Не сохраняется после перезапуска.',
+    crosshairKwinCopyButton: 'Скопировать шаги правила KWin',
+    crosshairKwinInstructions: (windowClass: string, windowTitle: string) =>
+      [
+        '1. Откройте Параметры системы → Управление окнами → Правила окон',
+        '2. Нажмите «Добавить…»',
+        '3. Описание: 1.6X Launcher Crosshair Overlay',
+        `4. Класс окна: ${windowClass}  (соответствие: Точное соответствие)`,
+        `5. Заголовок окна: ${windowTitle}  (соответствие: Точное соответствие)`,
+        '6. На вкладке «Расположение и доступ» включите «Держать поверх других окон» и установите значение «Принудительно»',
+        '7. Нажмите «Применить»'
+      ].join('\n'),
 
     sectionPreferences: 'Настройки вида',
     reduceMotionLabel: 'Меньше анимации',
@@ -417,6 +473,8 @@ export const ru: Messages = {
     launchOptionsCode: 'userconfig.cfg',
     launchOptionsTextAfter:
       'автоматически в большинстве сборок Steam. Для дополнительной надёжности установите параметры запуска CS 1.6 в Steam (правый клик в библиотеке Steam → Свойства → Общие) на:',
+    crosshairWindowedText:
+      'Оверлей прицела — это отдельное окно поверх игры — оно надёжно отображается только над игрой в оконном или безрамочном режиме, а не в эксклюзивном полноэкранном. Добавьте это в параметры запуска CS 1.6 в Steam (правый клик в библиотеке Steam → Свойства → Общие):',
     desktopIntegrationText:
       'Добавить 1.6X Launcher в меню приложений? Это также исправляет поднятие окна при клике на фоновое уведомление (нужна зарегистрированная запись приложения, чтобы рабочий стол мог поднять окно) и даёт лаунчеру корректное имя и значок в панели задач.',
     desktopIntegrationAdding: 'Добавление…',

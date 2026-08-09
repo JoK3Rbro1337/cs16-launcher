@@ -9,12 +9,36 @@
  *   - `-condebug` — a hard requirement for session-watcher.ts (M12a): GoldSrc
  *     only writes qconsole.log when this flag is set, so without it there is
  *     nothing to tail at all.
+ *   - `-windowed`/`-noborder` — M15 follow-up: the crosshair overlay
+ *     (crosshair-overlay.ts) is a real, separate window composited above the
+ *     game, which is only reliable over a windowed/borderless game — an
+ *     *exclusive* fullscreen game surface is compositor-dependent to draw
+ *     over (Wayland) or fights the overlay for top-most status (X11, see
+ *     the setIgnoreMouseEvents regression documented in crosshair-
+ *     overlay.ts). Same read-only stance as -condebug below applies here:
+ *     detected and surfaced as a recommendation only, never written.
+ *   - `-w`/`-h` (also accepts `-width`/`-height`, defensively — GoldSrc's
+ *     documented flags are `-w`/`-h`, but a Steam-pipe engine update
+ *     recognizing the longer spelling too costs nothing to also match) — the
+ *     game's actual render resolution, parsed (not just detected as
+ *     present/absent like the flags above) so Settings' crosshair-scale
+ *     auto-detect (crosshair-settings.ts's `scale` field) can offer "use my
+ *     current Launch Options resolution" instead of requiring the player to
+ *     retype numbers they already set in Steam.
  *
+
  * Read-only, by design: never writes to localconfig.vdf. Steam owns that
  * file and may rewrite it at any time (including while running), so a
  * launcher-side write is a real corruption risk for no good reason — the UI
  * this feeds just tells the player what to paste into Steam's own Launch
- * Options field themselves.
+ * Options field themselves. This stance is deliberately not reconsidered for
+ * the overlay's windowed/borderless recommendation either, even though this
+ * launcher doesn't spawn the game process itself (playGame() hands off
+ * entirely to Steam via steam://rungameid — see launch.ts) and so has no
+ * per-launch argument injection point of its own: the corruption risk that
+ * justified read-only for -condebug applies identically here, and a launcher
+ * that can't safely write once shouldn't gain a write path just because a
+ * second feature would also like one.
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises'
@@ -27,12 +51,30 @@ export interface LaunchOptionsCheck {
   checked: boolean
   hasExecAutoexec: boolean
   hasCondebug: boolean
+  /** `-window` or `-windowed` — both are recognized by GoldSrc; either satisfies this. */
+  hasWindowed: boolean
+  hasNoBorder: boolean
+  /** Parsed from -w/-width, null if not set or unparseable. */
+  gameWidth: number | null
+  /** Parsed from -h/-height, null if not set or unparseable. */
+  gameHeight: number | null
   /** Whatever's currently in Launch Options for CS 1.6, '' if empty. */
   currentOptions: string
 }
 
 const EXEC_AUTOEXEC_RE = /\+exec\s+"?autoexec\.cfg"?/i
 const CONDEBUG_RE = /(^|\s)-condebug(\s|$)/i
+const WINDOWED_RE = /(^|\s)-window(ed)?(\s|$)/i
+const NOBORDER_RE = /(^|\s)-noborder(\s|$)/i
+const WIDTH_RE = /(^|\s)-w(?:idth)?\s+(\d+)/i
+const HEIGHT_RE = /(^|\s)-h(?:eight)?\s+(\d+)/i
+
+function parseDimension(re: RegExp, options: string): number | null {
+  const match = re.exec(options)
+  if (!match) return null
+  const n = Number(match[2])
+  return Number.isFinite(n) && n > 0 ? n : null
+}
 
 /** VDF key casing isn't guaranteed stable across Steam versions — look up case-insensitively. */
 function getCI(obj: unknown, key: string): unknown {
@@ -65,7 +107,16 @@ async function findMostRecentLocalConfig(steamPath: string): Promise<string | nu
   return best?.path ?? null
 }
 
-const NOT_CHECKED: LaunchOptionsCheck = { checked: false, hasExecAutoexec: false, hasCondebug: false, currentOptions: '' }
+const NOT_CHECKED: LaunchOptionsCheck = {
+  checked: false,
+  hasExecAutoexec: false,
+  hasCondebug: false,
+  hasWindowed: false,
+  hasNoBorder: false,
+  gameWidth: null,
+  gameHeight: null,
+  currentOptions: ''
+}
 
 export async function checkLaunchOptions(): Promise<LaunchOptionsCheck> {
   const detection = await detectSteam()
@@ -89,6 +140,10 @@ export async function checkLaunchOptions(): Promise<LaunchOptionsCheck> {
       checked: true,
       hasExecAutoexec: EXEC_AUTOEXEC_RE.test(currentOptions),
       hasCondebug: CONDEBUG_RE.test(currentOptions),
+      hasWindowed: WINDOWED_RE.test(currentOptions),
+      hasNoBorder: NOBORDER_RE.test(currentOptions),
+      gameWidth: parseDimension(WIDTH_RE, currentOptions),
+      gameHeight: parseDimension(HEIGHT_RE, currentOptions),
       currentOptions
     }
   } catch {

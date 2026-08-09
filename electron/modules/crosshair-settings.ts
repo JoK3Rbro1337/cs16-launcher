@@ -35,6 +35,23 @@ export interface CrosshairSettings {
   offsetY: number
   /** Electron `Display.id` to pin the overlay to, or null for "auto" (see crosshair-overlay.ts's resolveTargetDisplay). */
   displayId: number | null
+  /**
+   * Multiplier applied to size/thickness/gap/offsetX/offsetY only — never to
+   * color/opacity/outline/shape — at render/positioning time (see
+   * scaledCrosshairSettings below). 1 = no adjustment. Exists because the
+   * overlay window is always positioned/sized in real desktop pixels, but a
+   * player running the game at a lower internal resolution than their
+   * display (e.g. -w 1280 -h 960 on a 2560x1440 monitor, upscaled by
+   * gamescope or similar) sees the game's own content — and therefore its
+   * own crosshair, if using one — effectively magnified by that same
+   * upscale; without this, an overlay crosshair configured to "look right"
+   * assumes a 1:1 game-to-display pixel mapping and renders too small
+   * relative to the magnified game image. Settings.tsx computes this from
+   * either an explicit game-resolution input or steam-launch-options.ts's
+   * parsed -w/-h, and stores only the resulting number here — see that
+   * component for the derivation.
+   */
+  scale: number
 }
 
 export const CROSSHAIR_SHAPES: CrosshairShape[] = ['dot', 'cross', 'circle', 'cross-dot']
@@ -47,7 +64,9 @@ export const CROSSHAIR_RANGES = {
   thickness: { min: 1, max: 12 },
   gap: { min: 0, max: 32 },
   opacity: { min: 0.1, max: 1 },
-  offset: { min: -300, max: 300 }
+  offset: { min: -300, max: 300 },
+  /** 8x covers an extreme case like 640x480 rendered on a 4K/5K display; 0.25x floor guards against a fat-fingered/garbage manual input collapsing the crosshair to nothing. */
+  scale: { min: 0.25, max: 8 }
 } as const
 
 export const DEFAULT_CROSSHAIR_SETTINGS: CrosshairSettings = {
@@ -62,7 +81,8 @@ export const DEFAULT_CROSSHAIR_SETTINGS: CrosshairSettings = {
   opacity: 1,
   offsetX: 0,
   offsetY: 0,
-  displayId: null
+  displayId: null,
+  scale: 1
 }
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
@@ -98,7 +118,31 @@ export function sanitizeCrosshairSettings(
     opacity: clamp(merged.opacity, CROSSHAIR_RANGES.opacity.min, CROSSHAIR_RANGES.opacity.max, base.opacity),
     offsetX: clamp(merged.offsetX, CROSSHAIR_RANGES.offset.min, CROSSHAIR_RANGES.offset.max, base.offsetX),
     offsetY: clamp(merged.offsetY, CROSSHAIR_RANGES.offset.min, CROSSHAIR_RANGES.offset.max, base.offsetY),
-    displayId: merged.displayId === null || Number.isInteger(merged.displayId) ? merged.displayId : base.displayId
+    displayId: merged.displayId === null || Number.isInteger(merged.displayId) ? merged.displayId : base.displayId,
+    scale: clamp(merged.scale, CROSSHAIR_RANGES.scale.min, CROSSHAIR_RANGES.scale.max, base.scale)
+  }
+}
+
+/**
+ * Applies `scale` to every spatial dimension (size/thickness/gap/offsetX/
+ * offsetY) and resets `scale` to 1 on the result — never to color/opacity/
+ * outline/shape/displayId, which aren't spatial quantities relative to the
+ * game's render resolution. Used identically by crosshair-overlay.ts (main
+ * process: window sizing + positioning) and Settings.tsx's live preview, so
+ * the preview matches the real overlay exactly, same guarantee drawCrosshair
+ * already provides for shape rendering. Resetting `scale` to 1 on the output
+ * means this is safe to feed straight into drawCrosshair (which has no idea
+ * scale exists) without it being applied a second time by accident.
+ */
+export function scaledCrosshairSettings(s: CrosshairSettings): CrosshairSettings {
+  return {
+    ...s,
+    size: s.size * s.scale,
+    thickness: s.thickness * s.scale,
+    gap: s.gap * s.scale,
+    offsetX: s.offsetX * s.scale,
+    offsetY: s.offsetY * s.scale,
+    scale: 1
   }
 }
 

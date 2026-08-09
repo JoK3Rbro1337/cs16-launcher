@@ -7,6 +7,7 @@
 import {
   DEFAULT_CROSSHAIR_SETTINGS,
   sanitizeCrosshairSettings,
+  scaledCrosshairSettings,
   shouldShowOverlay,
   type CrosshairSettings
 } from '../electron/modules/crosshair-settings.ts'
@@ -46,6 +47,32 @@ check('enabled coerces truthy', sanitizeCrosshairSettings({ enabled: 1 as unknow
 check('displayId accepts an integer', sanitizeCrosshairSettings({ displayId: 7 }).displayId === 7)
 check('displayId accepts null (auto)', sanitizeCrosshairSettings({ displayId: null }, { ...DEFAULT_CROSSHAIR_SETTINGS, displayId: 3 }).displayId === null)
 check('displayId rejects a non-integer, falls back to base', sanitizeCrosshairSettings({ displayId: 1.5 }, { ...DEFAULT_CROSSHAIR_SETTINGS, displayId: 9 }).displayId === 9)
+check('scale defaults to 1', DEFAULT_CROSSHAIR_SETTINGS.scale === 1)
+check('scale clamps above max (8)', sanitizeCrosshairSettings({ scale: 999 }).scale === 8)
+check('scale clamps below min (0.25)', sanitizeCrosshairSettings({ scale: 0 }).scale === 0.25)
+check('a valid scale is accepted as-is', sanitizeCrosshairSettings({ scale: 2 }).scale === 2)
+check('non-finite scale falls back to base, not a hardcoded default', (() => {
+  const base: CrosshairSettings = { ...DEFAULT_CROSSHAIR_SETTINGS, scale: 1.5 }
+  return sanitizeCrosshairSettings({ scale: NaN }, base).scale === 1.5
+})())
+
+console.log('== scaledCrosshairSettings ==')
+check('scale of 1 leaves spatial fields unchanged', (() => {
+  const s: CrosshairSettings = { ...DEFAULT_CROSSHAIR_SETTINGS, size: 10, thickness: 2, gap: 4, offsetX: 5, offsetY: -5, scale: 1 }
+  const scaled = scaledCrosshairSettings(s)
+  return scaled.size === 10 && scaled.thickness === 2 && scaled.gap === 4 && scaled.offsetX === 5 && scaled.offsetY === -5
+})())
+check('scale of 2 doubles size/thickness/gap/offsetX/offsetY', (() => {
+  const s: CrosshairSettings = { ...DEFAULT_CROSSHAIR_SETTINGS, size: 10, thickness: 2, gap: 4, offsetX: 5, offsetY: -5, scale: 2 }
+  const scaled = scaledCrosshairSettings(s)
+  return scaled.size === 20 && scaled.thickness === 4 && scaled.gap === 8 && scaled.offsetX === 10 && scaled.offsetY === -10
+})())
+check('output always carries scale: 1 (safe to feed straight into drawCrosshair without double-applying)', scaledCrosshairSettings({ ...DEFAULT_CROSSHAIR_SETTINGS, scale: 3 }).scale === 1)
+check('color/opacity/outline/shape/displayId pass through untouched', (() => {
+  const s: CrosshairSettings = { ...DEFAULT_CROSSHAIR_SETTINGS, color: '#123456', opacity: 0.5, outline: false, shape: 'circle', displayId: 3, scale: 2 }
+  const scaled = scaledCrosshairSettings(s)
+  return scaled.color === '#123456' && scaled.opacity === 0.5 && scaled.outline === false && scaled.shape === 'circle' && scaled.displayId === 3
+})())
 
 console.log('== sanitizeCrosshairSettings: partial merge never clobbers unrelated fields ==')
 check('updating only color leaves size untouched', (() => {

@@ -54,11 +54,23 @@ import {
 import { initLocale, getLocale, setLocale } from './modules/locale-store'
 import {
   initCrosshairOverlay,
+  stopCrosshairOverlay,
   getCrosshairSettings,
   updateCrosshairSettings,
   getCrosshairPlatformInfo,
+  reassertCrosshairOverlay,
+  getKwinRuleInstructions,
+  computeSuggestedScale,
+  getCrosshairDebugAlignment,
+  setCrosshairDebugAlignment,
   type CrosshairSettings
 } from './modules/crosshair-overlay'
+import {
+  initNativeCrosshair,
+  getNativeCrosshairStatus,
+  updateNativeCrosshairSettings,
+  type NativeCrosshairSettings
+} from './modules/native-crosshair'
 import type { Locale } from '../locales/types'
 
 /**
@@ -124,6 +136,21 @@ function createWindow(): void {
 
   mainWindow.on('maximize', () => mainWindow.webContents.send('window:maximized-change', true))
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window:maximized-change', false))
+
+  // The moment our own window loses focus is the moment the player most
+  // likely just switched to the game — the highest-risk transition for the
+  // crosshair overlay falling behind it under KWin (see crosshair-overlay.ts's
+  // module doc). Reasserting right here, in addition to that module's own
+  // fast timer, catches it immediately instead of waiting out the interval.
+  mainWindow.on('blur', () => reassertCrosshairOverlay())
+
+  // The overlay is a real (if hidden) BrowserWindow, so Electron counts it
+  // toward "windows still open" — window-all-closed never fires while it's
+  // alive, which left the process running after the main window closed on
+  // first real test (2026-08). Destroying it here, synchronously as part of
+  // the main window's own 'closed' handler, means the window count is
+  // already 0 by the time Electron evaluates window-all-closed below.
+  mainWindow.on('closed', () => stopCrosshairOverlay())
 
   // Open external links (e.g. steam:// or http) in the OS, never in-app.
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -225,6 +252,17 @@ function registerIpc(): void {
   ipcMain.handle('crosshair:get-settings', () => getCrosshairSettings())
   ipcMain.handle('crosshair:update-settings', (_e, partial: Partial<CrosshairSettings>) => updateCrosshairSettings(partial))
   ipcMain.handle('crosshair:get-platform-info', () => getCrosshairPlatformInfo())
+  ipcMain.handle('crosshair:get-kwin-rule-instructions', () => getKwinRuleInstructions())
+  ipcMain.handle('crosshair:compute-suggested-scale', (_e, gameWidth: number, gameHeight: number) =>
+    computeSuggestedScale(gameWidth, gameHeight)
+  )
+  ipcMain.handle('crosshair:get-debug-alignment', () => getCrosshairDebugAlignment())
+  ipcMain.handle('crosshair:set-debug-alignment', (_e, enabled: boolean) => setCrosshairDebugAlignment(enabled))
+
+  ipcMain.handle('native-crosshair:get-status', () => getNativeCrosshairStatus())
+  ipcMain.handle('native-crosshair:update-settings', (_e, partial: Partial<NativeCrosshairSettings>) =>
+    updateNativeCrosshairSettings(partial)
+  )
 
   ipcMain.handle('updater:check', () => checkForUpdates())
   ipcMain.handle('updater:download', () => downloadUpdate())
@@ -308,6 +346,7 @@ app.whenReady().then(async () => {
   })
 
   await initCrosshairOverlay()
+  await initNativeCrosshair()
 
   registerIpc()
   createWindow()
@@ -320,3 +359,8 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+// Guard against a stray overlay window ever outliving the app (e.g. a quit
+// path — Cmd+Q on darwin, or a future programmatic app.quit() — that doesn't
+// go through the main window's 'closed' handler above). Idempotent.
+app.on('before-quit', () => stopCrosshairOverlay())

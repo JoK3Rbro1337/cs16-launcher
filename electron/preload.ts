@@ -9,7 +9,8 @@ import type { NeighborhoodScanResult } from './modules/neighborhood-scan'
 import type { BackedUpFile, BuildProfile, ContentManifest, ManifestFile, SyncProgress, SyncResult } from './modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config-variant'
 import type { ConfigScanResult } from './modules/config-scanner'
-import type { CrosshairPlatformInfo, CrosshairSettings } from './modules/crosshair-overlay'
+import type { CrosshairPlatformInfo, CrosshairSettings, KwinRuleInstructions } from './modules/crosshair-overlay'
+import type { NativeCrosshairSettings, NativeCrosshairStatus } from './modules/native-crosshair'
 import type { UpdateStatus } from './modules/updater'
 import type { LiveSession, SessionHistoryEntry } from './modules/session-watcher'
 import type { NotificationRule, NotificationSettings, PollStatus } from './modules/notification-poller'
@@ -130,11 +131,24 @@ const launcher = {
   updateCrosshairSettings: (partial: Partial<CrosshairSettings>): Promise<CrosshairSettings> =>
     ipcRenderer.invoke('crosshair:update-settings', partial),
   getCrosshairPlatformInfo: (): Promise<CrosshairPlatformInfo> => ipcRenderer.invoke('crosshair:get-platform-info'),
+  getKwinRuleInstructions: (): Promise<KwinRuleInstructions> => ipcRenderer.invoke('crosshair:get-kwin-rule-instructions'),
+  computeSuggestedCrosshairScale: (gameWidth: number, gameHeight: number): Promise<number> =>
+    ipcRenderer.invoke('crosshair:compute-suggested-scale', gameWidth, gameHeight),
+  getCrosshairDebugAlignment: (): Promise<boolean> => ipcRenderer.invoke('crosshair:get-debug-alignment'),
+  setCrosshairDebugAlignment: (enabled: boolean): Promise<void> => ipcRenderer.invoke('crosshair:set-debug-alignment', enabled),
+  onCrosshairDebugAlignmentChanged: (callback: (enabled: boolean) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, enabled: boolean): void => callback(enabled)
+    ipcRenderer.on('crosshair:debug-alignment', listener)
+    return () => ipcRenderer.removeListener('crosshair:debug-alignment', listener)
+  },
   onCrosshairSettingsChanged: (callback: (settings: CrosshairSettings) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, settings: CrosshairSettings): void => callback(settings)
     ipcRenderer.on('crosshair:settings', listener)
     return () => ipcRenderer.removeListener('crosshair:settings', listener)
   },
+  getNativeCrosshairStatus: (): Promise<NativeCrosshairStatus> => ipcRenderer.invoke('native-crosshair:get-status'),
+  updateNativeCrosshairSettings: (partial: Partial<NativeCrosshairSettings>): Promise<NativeCrosshairStatus> =>
+    ipcRenderer.invoke('native-crosshair:update-settings', partial),
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
   closeWindow: (): Promise<void> => ipcRenderer.invoke('window:close'),

@@ -20,6 +20,7 @@ export const DEFAULT_SUBSCRIPTION_SEEDED_KEY = 'cs16-default-subscription-seeded
 export const KNOWN_SERVER_RETENTION_DAYS_KEY = 'cs16-known-server-retention-days'
 export const NEIGHBORHOOD_SCAN_ENABLED_KEY = 'cs16-neighborhood-scan-enabled'
 export const DESKTOP_INTEGRATION_NOTICE_DISMISSED_KEY = 'cs16-desktop-integration-notice-dismissed'
+export const CROSSHAIR_WINDOWED_NOTICE_DISMISSED_KEY = 'cs16-crosshair-windowed-notice-dismissed'
 
 export function loadJSON<T>(key: string, fallback: T): T {
   try {

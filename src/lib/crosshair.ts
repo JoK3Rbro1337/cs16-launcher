@@ -108,3 +108,41 @@ export function drawCrosshair(ctx: CanvasRenderingContext2D, width: number, heig
 
   ctx.restore()
 }
+
+/**
+ * Temporary alignment aid (M15 follow-up, 2026-08) — draws thin, full-length
+ * lines spanning the entire overlay window plus a small center dot, instead
+ * of the configured crosshair shape, so a player can visually confirm the
+ * overlay window's own center against the game's centered elements (crosshair,
+ * HUD, menu) with a target-drawing precise enough that a few pixels of true
+ * misalignment (e.g. the workArea-vs-bounds panel-offset bug this shipped
+ * alongside) is unambiguous rather than lost in a small crosshair's own
+ * visual noise. Deliberately a separate function from drawCrosshair rather
+ * than a shape variant on it — keeps this easy to strip out later, and never
+ * risks the "Settings preview matches the real overlay" guarantee the real
+ * shapes depend on. Bright magenta specifically so it reads as "this is a
+ * debug overlay", never mistakable for a real configured crosshair color.
+ */
+const ALIGNMENT_GUIDE_COLOR = '#ff2fd6'
+
+export function drawAlignmentGuide(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  ctx.clearRect(0, 0, width, height)
+  const cx = width / 2
+  const cy = height / 2
+
+  ctx.save()
+  ctx.strokeStyle = ALIGNMENT_GUIDE_COLOR
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(0, cy + 0.5)
+  ctx.lineTo(width, cy + 0.5)
+  ctx.moveTo(cx + 0.5, 0)
+  ctx.lineTo(cx + 0.5, height)
+  ctx.stroke()
+
+  ctx.fillStyle = ALIGNMENT_GUIDE_COLOR
+  ctx.beginPath()
+  ctx.arc(cx, cy, 2.5, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}

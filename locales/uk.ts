@@ -305,7 +305,30 @@ export const uk: Messages = {
     addedToMenuToast: 'Додано до меню застосунків',
     removedFromMenuToast: 'Видалено з меню застосунків',
 
-    sectionCrosshair: 'Приціл поверх гри',
+    sectionNativeCrosshair: 'Нативний приціл',
+    nativeCrosshairIntro:
+      'Встановлює власні cvar-параметри прицілу CS 1.6 — працює в ексклюзивному повноекранному режимі та на Wayland, без окремого вікна-накладення. Рекомендовано замість накладення нижче, якщо вам не потрібні його додаткові форми чи зсув для кількох моніторів.',
+    nativeCrosshairEnabledLabel: 'Увімкнути',
+    nativeCrosshairEnabledDesc: 'Записує cl_crosshair_color/_size/_translucent та cl_dynamiccrosshair через керований cfg.',
+    nativeCrosshairEnabledAriaLabel: 'Нативний приціл',
+    nativeCrosshairSizeLabel: 'Розмір',
+    nativeCrosshairSizeSmall: 'Малий',
+    nativeCrosshairSizeMedium: 'Середній',
+    nativeCrosshairSizeLarge: 'Великий',
+    nativeCrosshairColorLabel: 'Колір',
+    nativeCrosshairCustomColorAriaLabel: 'Власний колір',
+    nativeCrosshairTranslucentLabel: 'Напівпрозорий',
+    nativeCrosshairTranslucentDesc: 'Трохи прозорий приціл.',
+    nativeCrosshairTranslucentAriaLabel: 'Напівпрозорий приціл',
+    nativeCrosshairDynamicLabel: 'Динамічний',
+    nativeCrosshairDynamicDesc: 'Приціл розширюється залежно від неточності зброї під час руху чи стрільби.',
+    nativeCrosshairDynamicAriaLabel: 'Динамічний приціл',
+    nativeCrosshairAppliedHint: 'Застосовано до конфігурації CS 1.6.',
+    nativeCrosshairNotAppliedHint: 'Установку CS 1.6 ще не знайдено — застосується, щойно її буде виявлено.',
+
+    sectionCrosshair: 'Приціл поверх гри (розширено)',
+    crosshairOverlayIntro:
+      'Окреме вікно на екрані замість cvar-параметра гри — більше форм і зсув для кількох моніторів ціною застережень нижче. Надавайте перевагу нативному прицілу вище, якщо вони вам не потрібні.',
     crosshairEnabledLabel: 'Увімкнути прицiл',
     crosshairEnabledDesc:
       'Вимкнено за замовчуванням. Показує приціл поверх CS 1.6 лише поки гра запущена, і автоматично ховається решту часу.',
@@ -327,6 +350,12 @@ export const uk: Messages = {
     crosshairOpacityLabel: 'Непрозорість',
     crosshairOffsetXLabel: 'Зсув по X',
     crosshairOffsetYLabel: 'Зсув по Y',
+    crosshairNudgeDecrementAriaLabel: 'Зсунути на 1px вліво/вгору',
+    crosshairNudgeIncrementAriaLabel: 'Зсунути на 1px вправо/вниз',
+    crosshairNudgeResetLabel: 'Центрувати',
+    crosshairNudgeResetDesc:
+      'Якщо оверлей не потрапляє точно в центр гри для вашого налаштування, скористайтеся кнопками ±1px вище, щоб підлаштувати його під час гри — жодна формула не працює однаково для всіх компоузерів і режимів вікна.',
+    crosshairNudgeResetButton: 'Скинути в центр',
     crosshairColorLabel: 'Колір',
     crosshairCustomColorAriaLabel: 'Свій колір',
     crosshairOutlineLabel: 'Обведення',
@@ -335,6 +364,33 @@ export const uk: Messages = {
     crosshairDisplayLabel: 'Дисплей',
     crosshairDisplayDesc: 'На якому моніторі малювати приціл — для систем із кількома моніторами.',
     crosshairDisplayAuto: 'Авто',
+    crosshairKwinHintTitle: 'Приціл все ще ховається за грою в KDE Plasma?',
+    crosshairKwinHintDesc:
+      'Оверлей автоматично намагається залишатися зверху, але деякі налаштування KWin не завжди надійно тримають його над вікном гри, коли воно у фокусі. Правило вікон KWin гарантує це — скопіюйте кроки нижче та додайте правило в Параметрах системи.',
+    crosshairScaleLabel: 'Масштаб під роздільність гри',
+    crosshairScaleDesc:
+      'Якщо CS 1.6 рендериться в нижчій роздільності, ніж ваш монітор (і масштабується на весь екран), оверлей має враховувати цей масштаб, інакше він буде замалим. Введіть роздільність гри або визначте її автоматично з параметрів запуску Steam.',
+    crosshairScaleCurrent: (n: string) => `Поточний: ${n}×`,
+    crosshairScaleWidthLabel: 'Ширина гри',
+    crosshairScaleHeightLabel: 'Висота гри',
+    crosshairScaleAutoDetectButton: 'Визначити з параметрів запуску',
+    crosshairScaleAutoDetectNotFound: 'У параметрах запуску Steam не знайдено роздільність -w/-h.',
+    crosshairScaleSuggested: (n: string) => `Пропоновано: ${n}×`,
+    crosshairScaleApplyButton: 'Застосувати',
+    crosshairDebugAlignmentLabel: 'Напрямна вирівнювання (debug)',
+    crosshairDebugAlignmentDesc:
+      'Тимчасово замінює приціл лініями на всю ширину/висоту вікна, щоб візуально перевірити, чи оверлей точно по центру відносно гри. Не зберігається після перезапуску.',
+    crosshairKwinCopyButton: 'Скопіювати кроки правила KWin',
+    crosshairKwinInstructions: (windowClass: string, windowTitle: string) =>
+      [
+        '1. Відкрийте Параметри системи → Керування вікнами → Правила вікон',
+        '2. Натисніть «Додати…»',
+        '3. Опис: 1.6X Launcher Crosshair Overlay',
+        `4. Клас вікна: ${windowClass}  (відповідність: Точна відповідність)`,
+        `5. Заголовок вікна: ${windowTitle}  (відповідність: Точна відповідність)`,
+        '6. На вкладці «Розташування та доступ» увімкніть «Тримати понад іншими вікнами» і встановіть значення «Примусово»',
+        '7. Натисніть «Застосувати»'
+      ].join('\n'),
 
     sectionPreferences: 'Налаштування вигляду',
     reduceMotionLabel: 'Менше анімації',
@@ -417,6 +473,8 @@ export const uk: Messages = {
     launchOptionsCode: 'userconfig.cfg',
     launchOptionsTextAfter:
       'автоматично в більшості збірок Steam. Для додаткової надійності встановіть параметри запуску CS 1.6 у Steam (правий клік у бібліотеці Steam → Властивості → Загальні) на:',
+    crosshairWindowedText:
+      'Оверлей прицілу — це окреме вікно поверх гри — воно надійно відображається лише над грою у віконному або безрамковому режимі, а не в ексклюзивному повноекранному. Додайте це до параметрів запуску CS 1.6 у Steam (правий клік у бібліотеці Steam → Властивості → Загальні):',
     desktopIntegrationText:
       'Додати 1.6X Launcher до меню застосунків? Це також виправляє підняття вікна при кліку на фонове сповіщення (потрібен зареєстрований запис застосунку, щоб робочий стіл міг підняти вікно) і надає лаунчеру правильну назву й іконку в панелі задач.',
     desktopIntegrationAdding: 'Додавання…',

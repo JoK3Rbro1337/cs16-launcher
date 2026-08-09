@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, TriangleAlert } from 'lucide-react'
+import { Copy, FolderOpen, Minus, Plus, TriangleAlert } from 'lucide-react'
 import type {
   BackedUpFile,
   BuildProfile,
@@ -11,7 +11,8 @@ import type { UpdateStatus } from '../../electron/modules/updater'
 import type { NotificationRule, NotificationSettings, PollStatus } from '../../electron/modules/notification-poller'
 import type { KnownPlayer } from '../../electron/modules/player-tracking'
 import type { ConfigScanResult } from '../../electron/modules/config-scanner'
-import type { CrosshairPlatformInfo, CrosshairSettings, CrosshairShape } from '../../electron/modules/crosshair-overlay'
+import type { CrosshairPlatformInfo, CrosshairSettings, CrosshairShape, KwinRuleInstructions } from '../../electron/modules/crosshair-overlay'
+import type { NativeCrosshairSettings, NativeCrosshairSize } from '../../electron/modules/native-crosshair'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
@@ -22,6 +23,7 @@ import ConfirmModal from '../components/ConfirmModal'
 import ConfigScanModal from '../components/ConfigScanModal'
 import NotificationRules from '../components/NotificationRules'
 import ProfileImportModal from '../components/ProfileImportModal'
+import CrosshairWindowedNotice from '../components/CrosshairWindowedNotice'
 
 /**
  * Mirrors CROSSHAIR_SHAPES/CROSSHAIR_COLOR_PRESETS in
@@ -31,6 +33,10 @@ import ProfileImportModal from '../components/ProfileImportModal'
  */
 const CROSSHAIR_SHAPES: CrosshairShape[] = ['dot', 'cross', 'circle', 'cross-dot']
 const CROSSHAIR_COLOR_PRESETS = ['#39ff14', '#00eaff', '#ff3b30', '#ffe135', '#ffffff', '#ff2fd6']
+
+/** Mirrors NATIVE_CROSSHAIR_SIZES/NATIVE_CROSSHAIR_COLOR_PRESETS in electron/modules/native-crosshair-settings.ts — same "renderer only pulls types" convention as CROSSHAIR_SHAPES above. */
+const NATIVE_CROSSHAIR_SIZES: NativeCrosshairSize[] = ['small', 'medium', 'large']
+const NATIVE_CROSSHAIR_COLOR_PRESETS = ['#39ff14', '#00eaff', '#ff3b30', '#ffe135', '#ffffff', '#ff2fd6']
 
 function crosshairShapeLabel(t: Messages, shape: CrosshairShape): string {
   switch (shape) {
@@ -42,6 +48,17 @@ function crosshairShapeLabel(t: Messages, shape: CrosshairShape): string {
       return t.settings.crosshairShapeCircle
     case 'cross-dot':
       return t.settings.crosshairShapeCrossDot
+  }
+}
+
+function nativeCrosshairSizeLabel(t: Messages, size: NativeCrosshairSize): string {
+  switch (size) {
+    case 'small':
+      return t.settings.nativeCrosshairSizeSmall
+    case 'medium':
+      return t.settings.nativeCrosshairSizeMedium
+    case 'large':
+      return t.settings.nativeCrosshairSizeLarge
   }
 }
 import {
@@ -202,6 +219,15 @@ export default function Settings(): React.JSX.Element {
   const [crosshairPlatformInfo, setCrosshairPlatformInfo] = useState<CrosshairPlatformInfo | null>(null)
   const [confirmCrosshairDisclosure, setConfirmCrosshairDisclosure] = useState(false)
   const crosshairPreviewRef = useRef<HTMLCanvasElement | null>(null)
+  const [kwinInstructions, setKwinInstructions] = useState<KwinRuleInstructions | null>(null)
+  const [kwinCopied, setKwinCopied] = useState(false)
+  const [scaleWidthInput, setScaleWidthInput] = useState('')
+  const [scaleHeightInput, setScaleHeightInput] = useState('')
+  const [suggestedScale, setSuggestedScale] = useState<number | null>(null)
+  const [debugAlignment, setDebugAlignment] = useState(false)
+
+  const [nativeCrosshair, setNativeCrosshair] = useState<NativeCrosshairSettings | null>(null)
+  const [nativeCrosshairApplied, setNativeCrosshairApplied] = useState(false)
 
   useEffect(() => {
     return window.launcher.onSyncProgress((p) => {
@@ -259,7 +285,43 @@ export default function Settings(): React.JSX.Element {
   useEffect(() => {
     window.launcher.getCrosshairSettings().then(setCrosshair).catch(() => {})
     window.launcher.getCrosshairPlatformInfo().then(setCrosshairPlatformInfo).catch(() => {})
+    window.launcher.getKwinRuleInstructions().then(setKwinInstructions).catch(() => {})
+    window.launcher.getCrosshairDebugAlignment().then(setDebugAlignment).catch(() => {})
   }, [])
+
+  function handleToggleDebugAlignment(): void {
+    const next = !debugAlignment
+    setDebugAlignment(next)
+    window.launcher.setCrosshairDebugAlignment(next).catch(() => {})
+  }
+
+  function handleCopyKwinInstructions(): void {
+    if (!kwinInstructions) return
+    const text = t.settings.crosshairKwinInstructions(kwinInstructions.windowClass, kwinInstructions.windowTitle)
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setKwinCopied(true)
+        setTimeout(() => setKwinCopied(false), 2000)
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    window.launcher
+      .getNativeCrosshairStatus()
+      .then(({ settings, applied }) => {
+        setNativeCrosshair(settings)
+        setNativeCrosshairApplied(applied)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function applyNativeCrosshairSettings(partial: Partial<NativeCrosshairSettings>): Promise<void> {
+    const { settings, applied } = await window.launcher.updateNativeCrosshairSettings(partial)
+    setNativeCrosshair(settings)
+    setNativeCrosshairApplied(applied)
+  }
 
   // Live preview: the same drawCrosshair() the overlay window itself uses, so this is
   // guaranteed to match exactly rather than risk drifting from a lookalike re-implementation.
@@ -268,7 +330,20 @@ export default function Settings(): React.JSX.Element {
     if (!canvas || !crosshair) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    drawCrosshair(ctx, canvas.width, canvas.height, crosshair)
+    // Mirrors scaledCrosshairSettings in electron/modules/crosshair-settings.ts
+    // (duplicated rather than imported as a value — same "renderer only pulls
+    // types from electron/modules" convention as CROSSHAIR_SHAPES above) so
+    // the preview shows the same game-resolution-scaled result the real
+    // overlay renders, not the unscaled slider values.
+    const scaled = {
+      ...crosshair,
+      size: crosshair.size * crosshair.scale,
+      thickness: crosshair.thickness * crosshair.scale,
+      gap: crosshair.gap * crosshair.scale,
+      offsetX: crosshair.offsetX * crosshair.scale,
+      offsetY: crosshair.offsetY * crosshair.scale
+    }
+    drawCrosshair(ctx, canvas.width, canvas.height, scaled)
   }, [crosshair])
 
   async function applyCrosshairSettings(partial: Partial<CrosshairSettings>): Promise<void> {
@@ -297,6 +372,53 @@ export default function Settings(): React.JSX.Element {
 
   function handleCrosshairDisplayChange(value: string): void {
     applyCrosshairSettings({ displayId: value === 'auto' ? null : Number(value) })
+  }
+
+  function handleNudgeCrosshair(axis: 'offsetX' | 'offsetY', delta: number): void {
+    if (!crosshair) return
+    applyCrosshairSettings({ [axis]: crosshair[axis] + delta })
+  }
+
+  function handleResetCrosshairPosition(): void {
+    applyCrosshairSettings({ offsetX: 0, offsetY: 0 })
+  }
+
+  useEffect(() => {
+    const w = Number(scaleWidthInput)
+    const h = Number(scaleHeightInput)
+    if (!scaleWidthInput || !scaleHeightInput || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+      setSuggestedScale(null)
+      return
+    }
+    let cancelled = false
+    window.launcher
+      .computeSuggestedCrosshairScale(w, h)
+      .then((scale) => {
+        if (!cancelled) setSuggestedScale(scale)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [scaleWidthInput, scaleHeightInput])
+
+  function handleAutoDetectGameResolution(): void {
+    window.launcher
+      .checkLaunchOptions()
+      .then((check) => {
+        if (check.gameWidth && check.gameHeight) {
+          setScaleWidthInput(String(check.gameWidth))
+          setScaleHeightInput(String(check.gameHeight))
+        } else {
+          pushToast(t.settings.crosshairScaleAutoDetectNotFound)
+        }
+      })
+      .catch(() => pushToast(t.settings.crosshairScaleAutoDetectNotFound))
+  }
+
+  function handleApplySuggestedScale(): void {
+    if (suggestedScale === null) return
+    applyCrosshairSettings({ scale: suggestedScale })
   }
 
   useEffect(() => {
@@ -1141,8 +1263,111 @@ export default function Settings(): React.JSX.Element {
         </>
       )}
 
+      <h2 className="section-header">{t.settings.sectionNativeCrosshair}</h2>
+      <div className="settings-card">
+        <p className="settings-row-desc settings-section-intro">{t.settings.nativeCrosshairIntro}</p>
+
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">{t.settings.nativeCrosshairEnabledLabel}</p>
+            <p className="settings-row-desc">{t.settings.nativeCrosshairEnabledDesc}</p>
+          </div>
+          <button
+            className={`toggle-switch${nativeCrosshair?.enabled ? ' on' : ''}`}
+            role="switch"
+            aria-checked={!!nativeCrosshair?.enabled}
+            aria-label={t.settings.nativeCrosshairEnabledAriaLabel}
+            disabled={!nativeCrosshair}
+            onClick={() => nativeCrosshair && applyNativeCrosshairSettings({ enabled: !nativeCrosshair.enabled })}
+          >
+            <span className="toggle-switch-thumb" />
+          </button>
+        </div>
+
+        {nativeCrosshair?.enabled && (
+          <>
+            <p
+              className={`settings-row-desc crosshair-wayland-hint${nativeCrosshairApplied ? ' native-crosshair-status-ok' : ''}`}
+            >
+              {nativeCrosshairApplied ? t.settings.nativeCrosshairAppliedHint : t.settings.nativeCrosshairNotAppliedHint}
+            </p>
+
+            <div className="settings-row">
+              <p className="settings-row-label">{t.settings.nativeCrosshairSizeLabel}</p>
+              <div className="filter-chips">
+                {NATIVE_CROSSHAIR_SIZES.map((size) => (
+                  <button
+                    key={size}
+                    className={`filter-chip${nativeCrosshair.size === size ? ' active' : ''}`}
+                    onClick={() => applyNativeCrosshairSettings({ size })}
+                  >
+                    {nativeCrosshairSizeLabel(t, size)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <p className="settings-row-label">{t.settings.nativeCrosshairColorLabel}</p>
+              <div className="crosshair-color-row">
+                {NATIVE_CROSSHAIR_COLOR_PRESETS.map((c) => (
+                  <button
+                    key={c}
+                    className={`crosshair-color-swatch${nativeCrosshair.color === c ? ' selected' : ''}`}
+                    style={{ background: c }}
+                    aria-label={c}
+                    onClick={() => applyNativeCrosshairSettings({ color: c })}
+                  />
+                ))}
+                <input
+                  type="color"
+                  className="crosshair-color-custom"
+                  aria-label={t.settings.nativeCrosshairCustomColorAriaLabel}
+                  value={nativeCrosshair.color}
+                  onChange={(e) => applyNativeCrosshairSettings({ color: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">{t.settings.nativeCrosshairTranslucentLabel}</p>
+                <p className="settings-row-desc">{t.settings.nativeCrosshairTranslucentDesc}</p>
+              </div>
+              <button
+                className={`toggle-switch${nativeCrosshair.translucent ? ' on' : ''}`}
+                role="switch"
+                aria-checked={nativeCrosshair.translucent}
+                aria-label={t.settings.nativeCrosshairTranslucentAriaLabel}
+                onClick={() => applyNativeCrosshairSettings({ translucent: !nativeCrosshair.translucent })}
+              >
+                <span className="toggle-switch-thumb" />
+              </button>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">{t.settings.nativeCrosshairDynamicLabel}</p>
+                <p className="settings-row-desc">{t.settings.nativeCrosshairDynamicDesc}</p>
+              </div>
+              <button
+                className={`toggle-switch${nativeCrosshair.dynamic ? ' on' : ''}`}
+                role="switch"
+                aria-checked={nativeCrosshair.dynamic}
+                aria-label={t.settings.nativeCrosshairDynamicAriaLabel}
+                onClick={() => applyNativeCrosshairSettings({ dynamic: !nativeCrosshair.dynamic })}
+              >
+                <span className="toggle-switch-thumb" />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
       <h2 className="section-header">{t.settings.sectionCrosshair}</h2>
       <div className="settings-card">
+        <p className="settings-row-desc settings-section-intro">{t.settings.crosshairOverlayIntro}</p>
+
         <div className="settings-row">
           <div>
             <p className="settings-row-label">{t.settings.crosshairEnabledLabel}</p>
@@ -1161,6 +1386,18 @@ export default function Settings(): React.JSX.Element {
         </div>
 
         {crosshairPlatformInfo?.isWayland && <p className="settings-row-desc crosshair-wayland-hint">{t.settings.crosshairWaylandHint}</p>}
+        {crosshair?.enabled && <CrosshairWindowedNotice />}
+
+        {crosshair?.enabled && crosshairPlatformInfo?.isKwin && kwinInstructions && (
+          <div className="kwin-rule-notice">
+            <p className="settings-row-label">{t.settings.crosshairKwinHintTitle}</p>
+            <p className="settings-row-desc">{t.settings.crosshairKwinHintDesc}</p>
+            <pre className="kwin-rule-steps">{t.settings.crosshairKwinInstructions(kwinInstructions.windowClass, kwinInstructions.windowTitle)}</pre>
+            <button className="cp-btn-secondary" onClick={handleCopyKwinInstructions}>
+              <Copy size={12} /> {kwinCopied ? t.notices.copied : t.settings.crosshairKwinCopyButton}
+            </button>
+          </div>
+        )}
 
         {crosshair?.enabled && (
           <>
@@ -1249,6 +1486,20 @@ export default function Settings(): React.JSX.Element {
                 onChange={(e) => applyCrosshairSettings({ offsetX: Number(e.target.value) })}
               />
               <span className="crosshair-slider-value mono">{crosshair.offsetX}</span>
+              <button
+                className="crosshair-nudge-btn"
+                aria-label={t.settings.crosshairNudgeDecrementAriaLabel}
+                onClick={() => handleNudgeCrosshair('offsetX', -1)}
+              >
+                <Minus size={12} />
+              </button>
+              <button
+                className="crosshair-nudge-btn"
+                aria-label={t.settings.crosshairNudgeIncrementAriaLabel}
+                onClick={() => handleNudgeCrosshair('offsetX', 1)}
+              >
+                <Plus size={12} />
+              </button>
             </div>
 
             <div className="settings-row settings-row-slider">
@@ -1262,6 +1513,30 @@ export default function Settings(): React.JSX.Element {
                 onChange={(e) => applyCrosshairSettings({ offsetY: Number(e.target.value) })}
               />
               <span className="crosshair-slider-value mono">{crosshair.offsetY}</span>
+              <button
+                className="crosshair-nudge-btn"
+                aria-label={t.settings.crosshairNudgeDecrementAriaLabel}
+                onClick={() => handleNudgeCrosshair('offsetY', -1)}
+              >
+                <Minus size={12} />
+              </button>
+              <button
+                className="crosshair-nudge-btn"
+                aria-label={t.settings.crosshairNudgeIncrementAriaLabel}
+                onClick={() => handleNudgeCrosshair('offsetY', 1)}
+              >
+                <Plus size={12} />
+              </button>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">{t.settings.crosshairNudgeResetLabel}</p>
+                <p className="settings-row-desc">{t.settings.crosshairNudgeResetDesc}</p>
+              </div>
+              <button className="cp-btn-secondary" onClick={handleResetCrosshairPosition}>
+                {t.settings.crosshairNudgeResetButton}
+              </button>
             </div>
 
             <div className="settings-row">
@@ -1319,6 +1594,62 @@ export default function Settings(): React.JSX.Element {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <p className="settings-row-label">{t.settings.crosshairScaleLabel}</p>
+                <p className="settings-row-desc">{t.settings.crosshairScaleDesc}</p>
+              </div>
+            </div>
+            <p className="settings-row-desc crosshair-scale-current mono">{t.settings.crosshairScaleCurrent(crosshair.scale.toFixed(2))}</p>
+            <div className="crosshair-scale-inputs">
+              <input
+                type="number"
+                min={1}
+                className="cp-input crosshair-scale-dim-input"
+                placeholder={t.settings.crosshairScaleWidthLabel}
+                aria-label={t.settings.crosshairScaleWidthLabel}
+                value={scaleWidthInput}
+                onChange={(e) => setScaleWidthInput(e.target.value)}
+              />
+              <span className="crosshair-scale-x">×</span>
+              <input
+                type="number"
+                min={1}
+                className="cp-input crosshair-scale-dim-input"
+                placeholder={t.settings.crosshairScaleHeightLabel}
+                aria-label={t.settings.crosshairScaleHeightLabel}
+                value={scaleHeightInput}
+                onChange={(e) => setScaleHeightInput(e.target.value)}
+              />
+              <button className="cp-btn-secondary" onClick={handleAutoDetectGameResolution}>
+                {t.settings.crosshairScaleAutoDetectButton}
+              </button>
+            </div>
+            {suggestedScale !== null && (
+              <div className="crosshair-scale-suggestion">
+                <span className="mono">{t.settings.crosshairScaleSuggested(suggestedScale.toFixed(2))}</span>
+                <button className="cp-btn-secondary" onClick={handleApplySuggestedScale}>
+                  {t.settings.crosshairScaleApplyButton}
+                </button>
+              </div>
+            )}
+
+            <div className="settings-row crosshair-debug-row">
+              <div>
+                <p className="settings-row-label">{t.settings.crosshairDebugAlignmentLabel}</p>
+                <p className="settings-row-desc">{t.settings.crosshairDebugAlignmentDesc}</p>
+              </div>
+              <button
+                className={`toggle-switch${debugAlignment ? ' on' : ''}`}
+                role="switch"
+                aria-checked={debugAlignment}
+                aria-label={t.settings.crosshairDebugAlignmentLabel}
+                onClick={handleToggleDebugAlignment}
+              >
+                <span className="toggle-switch-thumb" />
+              </button>
             </div>
           </>
         )}

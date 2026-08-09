@@ -310,7 +310,30 @@ export const en = {
     addedToMenuToast: 'Added to your application menu',
     removedFromMenuToast: 'Removed from your application menu',
 
-    sectionCrosshair: 'Crosshair Overlay',
+    sectionNativeCrosshair: 'Native Crosshair',
+    nativeCrosshairIntro:
+      "Sets CS 1.6's own crosshair cvars — works in exclusive fullscreen and on Wayland, with zero window/overlay involvement. Recommended over the overlay below unless you need its extra shapes or multi-monitor offset.",
+    nativeCrosshairEnabledLabel: 'Enable',
+    nativeCrosshairEnabledDesc: 'Writes cl_crosshair_color/_size/_translucent and cl_dynamiccrosshair via a managed cfg.',
+    nativeCrosshairEnabledAriaLabel: 'Native crosshair',
+    nativeCrosshairSizeLabel: 'Size',
+    nativeCrosshairSizeSmall: 'Small',
+    nativeCrosshairSizeMedium: 'Medium',
+    nativeCrosshairSizeLarge: 'Large',
+    nativeCrosshairColorLabel: 'Color',
+    nativeCrosshairCustomColorAriaLabel: 'Custom color',
+    nativeCrosshairTranslucentLabel: 'Translucent',
+    nativeCrosshairTranslucentDesc: 'Slightly see-through crosshair.',
+    nativeCrosshairTranslucentAriaLabel: 'Translucent crosshair',
+    nativeCrosshairDynamicLabel: 'Dynamic',
+    nativeCrosshairDynamicDesc: "Crosshair spreads with the weapon's inaccuracy while moving or firing.",
+    nativeCrosshairDynamicAriaLabel: 'Dynamic crosshair',
+    nativeCrosshairAppliedHint: 'Applied to your CS 1.6 config.',
+    nativeCrosshairNotAppliedHint: "CS 1.6 install not found yet — will apply the next time it's detected.",
+
+    sectionCrosshair: 'Crosshair Overlay (Advanced)',
+    crosshairOverlayIntro:
+      'A separate on-screen window instead of an engine cvar — more shapes and a multi-monitor offset, at the cost of the platform caveats below. Prefer Native Crosshair above unless you need those.',
     crosshairEnabledLabel: 'Enable overlay',
     crosshairEnabledDesc:
       'Off by default. Shows a crosshair over CS 1.6 only while the game is running, and hides automatically the rest of the time.',
@@ -332,6 +355,12 @@ export const en = {
     crosshairOpacityLabel: 'Opacity',
     crosshairOffsetXLabel: 'Offset X',
     crosshairOffsetYLabel: 'Offset Y',
+    crosshairNudgeDecrementAriaLabel: 'Nudge left/up by 1px',
+    crosshairNudgeIncrementAriaLabel: 'Nudge right/down by 1px',
+    crosshairNudgeResetLabel: 'Center',
+    crosshairNudgeResetDesc:
+      "If the overlay doesn't land exactly on the game's own center for your setup, use the ±1px buttons above to nudge it while the game is running — no single formula works across every compositor and window mode.",
+    crosshairNudgeResetButton: 'Reset to center',
     crosshairColorLabel: 'Color',
     crosshairCustomColorAriaLabel: 'Custom color',
     crosshairOutlineLabel: 'Outline',
@@ -340,6 +369,33 @@ export const en = {
     crosshairDisplayLabel: 'Display',
     crosshairDisplayDesc: 'Which monitor to draw the overlay on, for multi-monitor setups.',
     crosshairDisplayAuto: 'Auto',
+    crosshairKwinHintTitle: 'Still falling behind the game on KDE Plasma?',
+    crosshairKwinHintDesc:
+      "The overlay re-asserts staying on top automatically, but some KWin setups won't reliably keep it above a focused game window. A KWin Window Rule guarantees it — copy the steps below and add one in System Settings.",
+    crosshairScaleLabel: 'Game Resolution Scale',
+    crosshairScaleDesc:
+      "If CS 1.6 renders at a lower resolution than your monitor (upscaled to fill the screen), the overlay needs to match that scale or it renders too small. Enter the game's resolution, or auto-detect it from Steam Launch Options.",
+    crosshairScaleCurrent: (n: string) => `Current: ${n}×`,
+    crosshairScaleWidthLabel: 'Game width',
+    crosshairScaleHeightLabel: 'Game height',
+    crosshairScaleAutoDetectButton: 'Detect from Launch Options',
+    crosshairScaleAutoDetectNotFound: 'No -w/-h resolution found in Steam Launch Options.',
+    crosshairScaleSuggested: (n: string) => `Suggested: ${n}×`,
+    crosshairScaleApplyButton: 'Apply',
+    crosshairDebugAlignmentLabel: 'Alignment guide (debug)',
+    crosshairDebugAlignmentDesc:
+      "Temporarily replaces the crosshair with full-window crosshair lines, so you can visually confirm the overlay is dead-center against the game. Doesn't persist across restarts.",
+    crosshairKwinCopyButton: 'Copy KWin Rule Steps',
+    crosshairKwinInstructions: (windowClass: string, windowTitle: string) =>
+      [
+        '1. Open System Settings → Window Management → Window Rules',
+        '2. Click "Add New…"',
+        '3. Description: 1.6X Launcher Crosshair Overlay',
+        `4. Window class: ${windowClass}  (match: Exact Match)`,
+        `5. Window title: ${windowTitle}  (match: Exact Match)`,
+        '6. On the "Arrangement & Access" tab, enable "Keep above other windows" and set it to "Force"',
+        '7. Click Apply'
+      ].join('\n'),
 
     sectionPreferences: 'Preferences',
     reduceMotionLabel: 'Reduce motion',
@@ -422,6 +478,8 @@ export const en = {
     launchOptionsCode: 'userconfig.cfg',
     launchOptionsTextAfter:
       "automatically on most Steam builds. For extra reliability, set CS 1.6's Steam Launch Options (right-click in your Steam library → Properties → General) to:",
+    crosshairWindowedText:
+      'The crosshair overlay is a separate window on top of the game — it only reliably shows over a windowed or borderless game, not exclusive fullscreen. Add these to Steam Launch Options (right-click in your Steam library → Properties → General):',
     desktopIntegrationText:
       'Add 1.6X Launcher to your application menu? This also fixes background-notification click-to-focus (needs a registered app entry for your desktop to raise the window) and gives the launcher a proper name and icon in your taskbar.',
     desktopIntegrationAdding: 'Adding…',

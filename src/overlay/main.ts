@@ -1,4 +1,4 @@
-import { drawCrosshair, type CrosshairDrawSettings } from '../lib/crosshair'
+import { drawAlignmentGuide, drawCrosshair, type CrosshairDrawSettings } from '../lib/crosshair'
 import type { CrosshairSettings } from '../../electron/modules/crosshair-settings'
 
 /**
@@ -13,6 +13,8 @@ const canvas = document.getElementById('crosshair-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
 
 let current: CrosshairSettings | null = null
+/** Temporary alignment-guide debug toggle (M15 follow-up, 2026-08) — see crosshair-overlay.ts's debugAlignmentGuide doc comment. Replaces the normal crosshair draw entirely while on, so the guide reads unambiguously. */
+let debugAlignment = false
 
 function toDrawSettings(s: CrosshairSettings): CrosshairDrawSettings {
   const { shape, size, thickness, gap, color, outline, opacity, offsetX, offsetY } = s
@@ -32,6 +34,10 @@ function resizeCanvas(): void {
 }
 
 function render(): void {
+  if (debugAlignment) {
+    drawAlignmentGuide(ctx, window.innerWidth, window.innerHeight)
+    return
+  }
   if (!current) {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     return
@@ -52,5 +58,18 @@ window.launcher
 
 window.launcher.onCrosshairSettingsChanged((s) => {
   current = s
+  render()
+})
+
+window.launcher
+  .getCrosshairDebugAlignment()
+  .then((enabled) => {
+    debugAlignment = enabled
+    render()
+  })
+  .catch(() => {})
+
+window.launcher.onCrosshairDebugAlignmentChanged((enabled) => {
+  debugAlignment = enabled
   render()
 })
