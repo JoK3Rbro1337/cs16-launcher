@@ -29,6 +29,23 @@ changed so it can restore your original files at any time.
 - **Config presets** — variant/feature `.cfg` files are exec'd through a
   managed block the launcher maintains inside your own `cstrike/autoexec.cfg`;
   everything outside that block is left untouched.
+- **Config security scanner** — every config file is statically scanned
+  before it's ever applied. Critical findings (commands that could silently
+  reconnect you to another server, leak/replay rcon credentials, or clear
+  every keybind without restoring them) block installation outright;
+  warnings (script aliases, chained binds) are shown but don't block. Each
+  config gets a Safe Score and a details view with the exact file, line, and
+  offending text — all 11 configs shipped in the built-in content pack score
+  100/clean.
+- **Crosshair customization** — two ways to get a custom crosshair, both off
+  by default: a **native editor** that sets the game's own crosshair cvars
+  (color, size, translucency, dynamic spread) — works everywhere, including
+  exclusive fullscreen — and an **on-screen overlay** with more shapes,
+  outline/opacity/offset controls, and multi-monitor support. The overlay is
+  reliable on Windows and X11 Linux sessions; it's not currently reliable
+  over Wayland compositors (window stacking and click-through can misbehave
+  depending on your compositor), so the native editor is the better default
+  choice there.
 - **Self-updates** — the launcher updates itself via GitHub Releases
   (`electron-updater`), independently of content-pack versioning.
 - **Background notifications** — opt-in polling of your favorite servers with

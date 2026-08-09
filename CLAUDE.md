@@ -8,13 +8,13 @@ Before pushing any release tag (`vX.Y.Z`), always validate the electron-builder 
 
 ## Project status
 
-v0.1.0 and v0.2.0 are released (win+linux artifacts via GitHub Actions on tag push — see `.github/workflows/release.yml`, which derives the release tag from `package.json`'s version and publishes on any `v*.*.*` tag push). content-v1 and content-v2 are both published as GitHub Releases; content-v2 is the "Verified Config Archive" (see the curation convention under Roadmap's content-tasks bullet).
+v0.1.0 through v0.5.0 are released (win+linux artifacts via GitHub Actions on tag push — see `.github/workflows/release.yml`, which derives the release tag from `package.json`'s version and publishes on any `v*.*.*` tag push). content-v1 and content-v2 are both published as GitHub Releases; content-v2 is the "Verified Config Archive" (see the curation convention under Roadmap's content-tasks bullet).
 
 **v0.3.0 gate correction (2026-08):** the original plan (documented below as "v0.3.0 release after M12-M13") is outdated — it was written before M13a (save-as-variant + first-install config snapshot), M12a (session watcher), content-v2, and the full server-discovery rework (default curated subscription, known-servers pool, neighborhood scan — necessitated by Valve's GoldSrc master server infrastructure dying in 2026-07, see the server-sources/master-discovery gotchas below) all landed, none of which were in the original plan. v0.3.0 ships that accumulated work now rather than waiting on unrelated milestones. M12's remaining scope (background polling + notifications) and M13's remaining scope (nickname tracking, after M13a split off the save-as-variant half) move to gate **v0.4.0** instead — see Roadmap.
 
 **v0.4.0 gate met (2026-08):** M12 (background polling of favorites + system notifications with rules — player threshold, map match, quiet hours — plus the Linux desktop-integration work that made notification clicks actually raise/focus the window, see the Wayland gotchas below) and M13 (nickname tracking from A2S_PLAYER, known-player marking, friends-online surfacing on Servers/Home, and single-file JSON profile export/import) are both done — see Roadmap. v0.4.0 ships all of that.
 
-**v0.5.0 gate met (2026-08):** M12.5 (config security scanner) and M15 (crosshair overlay) are both done — see Roadmap. Next gate is **v0.6.0**; nothing is scoped into it yet. M14 (CFG Builder) remains unscheduled and isn't tied to a release gate.
+**v0.5.0 released (2026-08):** M12.5 (config security scanner) and M15 (crosshair overlay, including its native-crosshair-editor and X11/KWin/resolution-scale/centering follow-ups, and the userconfig.cfg/autoexec.cfg exec-cycle hang fix) are both done and shipped — see Roadmap. Next gate is **v0.6.0**; nothing is scoped into it yet. M14 (CFG Builder) remains unscheduled and isn't tied to a release gate.
 
 Next steps: `servers/cs16-servers.txt` still needs the user's actual favorites list (M11.3); custom map thumbnails are still outstanding.
 
