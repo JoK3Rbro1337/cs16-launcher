@@ -532,6 +532,31 @@ export function classifySeverityBand(counts: ScanCounts): SeverityBand {
   return 'ok'
 }
 
+/**
+ * Every `exec <target>` statement's target, in file order, exactly as written
+ * (not normalized/lowercased — callers that compare names decide their own
+ * case-folding). Used by content-sync.ts's managed-block exec-cycle
+ * detection, which needs to follow a cfg's own `exec` statements into other
+ * files rather than just flag findings within one file — see scanConfigFile's
+ * module doc for why that's a separate concern from the rule engine above.
+ */
+export function extractExecTargets(text: string): string[] {
+  const targets: string[] = []
+  for (const rawLine of text.split('\n')) {
+    const trimmedLine = rawLine.trim()
+    if (trimmedLine === '' || trimmedLine.startsWith('//')) continue
+    for (const rawStatement of splitTopLevelStatements(trimmedLine)) {
+      const stmt = rawStatement.trim()
+      if (stmt === '') continue
+      const args = tokenizeArgs(stmt)
+      if ((args[0] ?? '').toLowerCase() === 'exec' && args[1]) {
+        targets.push(args[1])
+      }
+    }
+  }
+  return targets
+}
+
 export function scanConfigFiles(inputs: FileScanInput[]): ConfigScanResult {
   const findings = inputs.flatMap(scanConfigFile)
   const counts: ScanCounts = { critical: 0, warning: 0, info: 0 }

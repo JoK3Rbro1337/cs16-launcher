@@ -79,6 +79,17 @@
  * twice is a no-op). See steam-launch-options.ts for the read-only Launch
  * Options check that drives the in-app notice about this.
  *
+ * That same "exec userconfig.cfg" trailer is exactly what makes this
+ * mechanism dangerous without care: it's a line Valve's own client writes
+ * into config.cfg (and therefore any variant .cfg copied from a real one)
+ * whenever it saves settings, so a variant that ends with it and then gets
+ * `exec`'d from userconfig.cfg's own managed block closes a cycle —
+ * `variant.cfg -> userconfig.cfg -> variant.cfg -> ...` — that hangs the
+ * GoldSrc engine at startup rather than erroring (no recursion guard in the
+ * engine). syncManagedExecTargets refuses to write a block that would create
+ * one; see findManagedExecCycle below and the "userconfig.cfg is a leaf of
+ * the exec graph" rule in CLAUDE.md.
+ *
  * Each target's block is fully recomputed from the current desired set on
  * every sync (rewritten on variant switch, emptied on deselect) and
  * everything outside its BEGIN/END markers — a player's own lines — is left
@@ -101,9 +112,8 @@ import { createReadStream, createWriteStream, type Dirent } from 'node:fs'
 import { access, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { once } from 'node:events'
-import { detectSteam } from './steam-detect'
-import { CONFIG_SLOT_ID, ensureLocalVariant } from './local-config-variant'
-import { scanConfigFiles, type ConfigScanResult } from './config-scanner'
+import { detectSteam } from './steam-detect.ts'
+import { scanConfigFiles, extractExecTargets, type ConfigScanResult } from './config-scanner.ts'
 
 export interface ManifestFile {
   path: string
@@ -232,8 +242,15 @@ async function hashFile(path: string): Promise<string | null> {
   }
 }
 
-/** Resolve a manifest-relative path under `root`, rejecting any escape via `..`. */
-function resolveContentPath(root: string, relPath: string): string {
+/**
+ * Exported for native-crosshair.ts (M15 follow-up): it writes its own small,
+ * independently-delimited block into the same two files as
+ * syncManagedExecTargets (see that function's doc comment) but is otherwise
+ * fully decoupled from this module's manifest/profile/cycle-detection
+ * machinery — reusing this path-escape guard (rather than re-implementing
+ * it) is the only coupling.
+ */
+export function resolveContentPath(root: string, relPath: string): string {
   const rootResolved = resolve(root)
   const dest = resolve(rootResolved, relPath)
   if (dest !== rootResolved && !dest.startsWith(rootResolved + sep)) {
@@ -261,8 +278,10 @@ async function pathExists(path: string): Promise<boolean> {
  * true pre-launcher original and must not be clobbered by an intermediate
  * variant's bytes. If nothing exists at `destPath` yet, there's nothing to
  * preserve.
+ *
+ * Exported for native-crosshair.ts — see resolveContentPath's doc comment.
  */
-async function backupIfNeeded(contentDir: string, path: string, destPath: string): Promise<void> {
+export async function backupIfNeeded(contentDir: string, path: string, destPath: string): Promise<void> {
   const backupPath = resolveBackupPath(contentDir, path)
   if (await pathExists(backupPath)) return
   if (!(await pathExists(destPath))) return
@@ -403,12 +422,111 @@ function buildManagedCfgContent(existingText: string, execPaths: string[]): stri
 }
 
 /**
+ * Thrown by syncManagedExecTargets instead of ever writing a cycle into
+ * autoexec.cfg/userconfig.cfg — see findManagedExecCycle. `cyclePath` is the
+ * chain of exec names (root ... root) that closes the loop, for a readable
+ * error message and for tests to assert on.
+ */
+export class ManagedExecCycleError extends Error {
+  readonly cyclePath: string[]
+
+  constructor(cyclePath: string[]) {
+    super(
+      `Refusing to write the launcher-managed exec block: this would create an exec cycle ` +
+        `(${cyclePath.join(' → ')}). GoldSrc has no recursion guard — a cycle through ` +
+        `autoexec.cfg/userconfig.cfg hangs the game at startup (black screen, 100% CPU, ` +
+        `unresponsive window) rather than failing with an error. userconfig.cfg/autoexec.cfg ` +
+        `must stay leaves of the exec graph; nothing selected by the current profile may exec ` +
+        `back into either of them, directly or transitively.`
+    )
+    this.name = 'ManagedExecCycleError'
+    this.cyclePath = cyclePath
+  }
+}
+
+/** Reads a cstrike-relative cfg by its exec name for graph-walking purposes only. Unreadable/unresolvable targets are dead ends, not errors — this function must never throw. */
+async function readExecTargetText(contentDir: string, execName: string): Promise<string | null> {
+  try {
+    const path = resolveContentPath(contentDir, `cstrike/${execName}`)
+    return await readFile(path, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+/** Pathological-depth safety valve only — real cfg chains are a handful of hops; true cycles are caught immediately via the recursion-stack check below. */
+const MAX_EXEC_GRAPH_DEPTH = 256
+
+/**
+ * Walks the exec graph that would exist immediately after writing execPaths
+ * into every MANAGED_EXEC_TARGETS file, looking for a cycle reachable from
+ * either target. Both managed targets are treated as pointing at execPaths
+ * (the write that's about to happen), then each further file's own `exec`
+ * statements are read from disk and followed recursively (classic DFS +
+ * recursion-stack cycle detection — catches a cycle anywhere in the reachable
+ * graph, not just a direct back-reference to a managed target). Returns the
+ * cycle as a chain of exec names, or null if none exists.
+ *
+ * Case-insensitive comparison (GoldSrc/Windows filesystem convention, same as
+ * toExecName/isExecCfg elsewhere in this module). An exec target that can't
+ * be read (not on disk, path escapes cstrike/, etc.) is treated as a leaf —
+ * this can only cause a false negative, never a false positive, so it never
+ * blocks a write that's actually safe.
+ */
+export async function findManagedExecCycle(contentDir: string, execPaths: string[]): Promise<string[] | null> {
+  const managedNames = MANAGED_EXEC_TARGETS.map((p) => toExecName(p).toLowerCase())
+  const normalizedExecPaths = execPaths.map((p) => p.toLowerCase())
+  const neighborCache = new Map<string, string[]>()
+
+  async function neighborsOf(name: string): Promise<string[]> {
+    if (managedNames.includes(name)) return normalizedExecPaths
+    const cached = neighborCache.get(name)
+    if (cached) return cached
+    const text = await readExecTargetText(contentDir, name)
+    const targets = text === null ? [] : extractExecTargets(text).map((t) => t.toLowerCase())
+    neighborCache.set(name, targets)
+    return targets
+  }
+
+  for (const root of managedNames) {
+    const onStack = new Set<string>()
+    const path: string[] = []
+
+    const dfs = async (node: string): Promise<string[] | null> => {
+      if (onStack.has(node)) return [...path, node]
+      if (path.length >= MAX_EXEC_GRAPH_DEPTH) return null
+      onStack.add(node)
+      path.push(node)
+      for (const next of await neighborsOf(node)) {
+        const found = await dfs(next)
+        if (found) return found
+      }
+      path.pop()
+      onStack.delete(node)
+      return null
+    }
+
+    const cycle = await dfs(root)
+    if (cycle) return cycle
+  }
+  return null
+}
+
+/**
  * Rewrites the managed block inside each of MANAGED_EXEC_TARGETS from the
  * current desired exec-cfg set. Deliberately outside the
  * state-file/pruneOrphans ownership model — see the module doc comment for
  * why, and for why there are two targets rather than one.
+ *
+ * Checks findManagedExecCycle before writing anything — a cycle throws
+ * ManagedExecCycleError and neither target is touched, rather than writing
+ * one target's cycle-closing line before discovering the other would also
+ * need one.
  */
-async function syncManagedExecTargets(contentDir: string, execPaths: string[]): Promise<void> {
+export async function syncManagedExecTargets(contentDir: string, execPaths: string[]): Promise<void> {
+  const cycle = await findManagedExecCycle(contentDir, execPaths)
+  if (cycle) throw new ManagedExecCycleError(cycle)
+
   for (const targetPath of MANAGED_EXEC_TARGETS) {
     const destPath = resolveContentPath(contentDir, targetPath)
     const existingText = await readFile(destPath, 'utf-8').catch((err) => {
@@ -594,6 +712,15 @@ export async function syncContent(
   // First sync ever to include a config slot: snapshot the player's existing
   // config.cfg into the "My Config" local variant before anything else runs,
   // so there's something to switch back to. No-ops once a snapshot exists.
+  //
+  // Dynamic import (not a static top-level one): local-config-variant.ts
+  // pulls in Electron's `app` for its userData-dir snapshot storage, which
+  // would make this whole module fail to load under a plain-Node harness —
+  // deferring the import to here, syncContent's only call site, keeps the
+  // rest of this module (syncManagedExecTargets/findManagedExecCycle in
+  // particular) loadable and testable without a real Electron runtime. See
+  // scripts/verify-content-sync.mts.
+  const { CONFIG_SLOT_ID, ensureLocalVariant } = await import('./local-config-variant.ts')
   if (manifest.slots.some((slot) => slot.id === CONFIG_SLOT_ID)) {
     await ensureLocalVariant()
   }

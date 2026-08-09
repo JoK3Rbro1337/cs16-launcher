@@ -24,7 +24,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { detectSteam } from './steam-detect'
+import { detectSteam } from './steam-detect.ts'
 import {
   firstToken,
   splitTopLevelStatements,
@@ -33,7 +33,7 @@ import {
   computeSafeScore,
   type ConfigScanResult,
   type ScanCounts
-} from './config-scanner'
+} from './config-scanner.ts'
 
 /** Convention: the config slot's id in any manifest that defines one. */
 export const CONFIG_SLOT_ID = 'config'
