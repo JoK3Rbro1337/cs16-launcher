@@ -11,6 +11,7 @@ import type { LocalVariantSnapshot, UpdatePreview } from './modules/local-config
 import type { ConfigScanResult } from './modules/config-scanner'
 import type { CrosshairPlatformInfo, CrosshairSettings, KwinRuleInstructions } from './modules/crosshair-overlay'
 import type { NativeCrosshairSettings, NativeCrosshairStatus } from './modules/native-crosshair'
+import type { CfgBuilderSettings, CfgBuilderStatus, CfgBuilderApplyResult } from './modules/cfg-builder'
 import type { UpdateStatus } from './modules/updater'
 import type { LiveSession, SessionHistoryEntry } from './modules/session-watcher'
 import type { NotificationRule, NotificationSettings, PollStatus } from './modules/notification-poller'
@@ -149,6 +150,17 @@ const launcher = {
   getNativeCrosshairStatus: (): Promise<NativeCrosshairStatus> => ipcRenderer.invoke('native-crosshair:get-status'),
   updateNativeCrosshairSettings: (partial: Partial<NativeCrosshairSettings>): Promise<NativeCrosshairStatus> =>
     ipcRenderer.invoke('native-crosshair:update-settings', partial),
+  getCfgBuilderStatus: (): Promise<CfgBuilderStatus> => ipcRenderer.invoke('cfg-builder:get-status'),
+  updateCfgBuilderSettings: (partial: Partial<CfgBuilderSettings>): Promise<CfgBuilderStatus> =>
+    ipcRenderer.invoke('cfg-builder:update-settings', partial),
+  resetCfgBuilderToDefault: (): Promise<CfgBuilderStatus> => ipcRenderer.invoke('cfg-builder:reset-to-default'),
+  previewCfgBuilderText: (): Promise<string> => ipcRenderer.invoke('cfg-builder:preview-text'),
+  scanCfgBuilder: (): Promise<ConfigScanResult> => ipcRenderer.invoke('cfg-builder:scan'),
+  loadCfgBuilderPreset: (files: ManifestFile[], label: string): Promise<CfgBuilderStatus> =>
+    ipcRenderer.invoke('cfg-builder:load-preset', files, label),
+  applyCfgBuilder: (): Promise<CfgBuilderApplyResult> => ipcRenderer.invoke('cfg-builder:apply'),
+  removeCfgBuilderFromGame: (): Promise<void> => ipcRenderer.invoke('cfg-builder:remove-from-game'),
+  exportCfgBuilderFile: (): Promise<{ canceled: boolean }> => ipcRenderer.invoke('cfg-builder:export-file'),
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
   closeWindow: (): Promise<void> => ipcRenderer.invoke('window:close'),

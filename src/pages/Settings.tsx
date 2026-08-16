@@ -12,7 +12,6 @@ import type { NotificationRule, NotificationSettings, PollStatus } from '../../e
 import type { KnownPlayer } from '../../electron/modules/player-tracking'
 import type { ConfigScanResult } from '../../electron/modules/config-scanner'
 import type { CrosshairPlatformInfo, CrosshairSettings, CrosshairShape, KwinRuleInstructions } from '../../electron/modules/crosshair-overlay'
-import type { NativeCrosshairSettings, NativeCrosshairSize } from '../../electron/modules/native-crosshair'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
@@ -24,6 +23,7 @@ import ConfigScanModal from '../components/ConfigScanModal'
 import NotificationRules from '../components/NotificationRules'
 import ProfileImportModal from '../components/ProfileImportModal'
 import CrosshairWindowedNotice from '../components/CrosshairWindowedNotice'
+import NativeCrosshairEditor from '../components/NativeCrosshairEditor'
 
 /**
  * Mirrors CROSSHAIR_SHAPES/CROSSHAIR_COLOR_PRESETS in
@@ -33,10 +33,6 @@ import CrosshairWindowedNotice from '../components/CrosshairWindowedNotice'
  */
 const CROSSHAIR_SHAPES: CrosshairShape[] = ['dot', 'cross', 'circle', 'cross-dot']
 const CROSSHAIR_COLOR_PRESETS = ['#39ff14', '#00eaff', '#ff3b30', '#ffe135', '#ffffff', '#ff2fd6']
-
-/** Mirrors NATIVE_CROSSHAIR_SIZES/NATIVE_CROSSHAIR_COLOR_PRESETS in electron/modules/native-crosshair-settings.ts — same "renderer only pulls types" convention as CROSSHAIR_SHAPES above. */
-const NATIVE_CROSSHAIR_SIZES: NativeCrosshairSize[] = ['small', 'medium', 'large']
-const NATIVE_CROSSHAIR_COLOR_PRESETS = ['#39ff14', '#00eaff', '#ff3b30', '#ffe135', '#ffffff', '#ff2fd6']
 
 function crosshairShapeLabel(t: Messages, shape: CrosshairShape): string {
   switch (shape) {
@@ -51,16 +47,6 @@ function crosshairShapeLabel(t: Messages, shape: CrosshairShape): string {
   }
 }
 
-function nativeCrosshairSizeLabel(t: Messages, size: NativeCrosshairSize): string {
-  switch (size) {
-    case 'small':
-      return t.settings.nativeCrosshairSizeSmall
-    case 'medium':
-      return t.settings.nativeCrosshairSizeMedium
-    case 'large':
-      return t.settings.nativeCrosshairSizeLarge
-  }
-}
 import {
   DEFAULT_SUBSCRIPTION_ID,
   getBattlemetricsEnabled,
@@ -226,9 +212,6 @@ export default function Settings(): React.JSX.Element {
   const [suggestedScale, setSuggestedScale] = useState<number | null>(null)
   const [debugAlignment, setDebugAlignment] = useState(false)
 
-  const [nativeCrosshair, setNativeCrosshair] = useState<NativeCrosshairSettings | null>(null)
-  const [nativeCrosshairApplied, setNativeCrosshairApplied] = useState(false)
-
   useEffect(() => {
     return window.launcher.onSyncProgress((p) => {
       setProgress(p)
@@ -305,22 +288,6 @@ export default function Settings(): React.JSX.Element {
         setTimeout(() => setKwinCopied(false), 2000)
       })
       .catch(() => {})
-  }
-
-  useEffect(() => {
-    window.launcher
-      .getNativeCrosshairStatus()
-      .then(({ settings, applied }) => {
-        setNativeCrosshair(settings)
-        setNativeCrosshairApplied(applied)
-      })
-      .catch(() => {})
-  }, [])
-
-  async function applyNativeCrosshairSettings(partial: Partial<NativeCrosshairSettings>): Promise<void> {
-    const { settings, applied } = await window.launcher.updateNativeCrosshairSettings(partial)
-    setNativeCrosshair(settings)
-    setNativeCrosshairApplied(applied)
   }
 
   // Live preview: the same drawCrosshair() the overlay window itself uses, so this is
@@ -1264,105 +1231,7 @@ export default function Settings(): React.JSX.Element {
       )}
 
       <h2 className="section-header">{t.settings.sectionNativeCrosshair}</h2>
-      <div className="settings-card">
-        <p className="settings-row-desc settings-section-intro">{t.settings.nativeCrosshairIntro}</p>
-
-        <div className="settings-row">
-          <div>
-            <p className="settings-row-label">{t.settings.nativeCrosshairEnabledLabel}</p>
-            <p className="settings-row-desc">{t.settings.nativeCrosshairEnabledDesc}</p>
-          </div>
-          <button
-            className={`toggle-switch${nativeCrosshair?.enabled ? ' on' : ''}`}
-            role="switch"
-            aria-checked={!!nativeCrosshair?.enabled}
-            aria-label={t.settings.nativeCrosshairEnabledAriaLabel}
-            disabled={!nativeCrosshair}
-            onClick={() => nativeCrosshair && applyNativeCrosshairSettings({ enabled: !nativeCrosshair.enabled })}
-          >
-            <span className="toggle-switch-thumb" />
-          </button>
-        </div>
-
-        {nativeCrosshair?.enabled && (
-          <>
-            <p
-              className={`settings-row-desc crosshair-wayland-hint${nativeCrosshairApplied ? ' native-crosshair-status-ok' : ''}`}
-            >
-              {nativeCrosshairApplied ? t.settings.nativeCrosshairAppliedHint : t.settings.nativeCrosshairNotAppliedHint}
-            </p>
-
-            <div className="settings-row">
-              <p className="settings-row-label">{t.settings.nativeCrosshairSizeLabel}</p>
-              <div className="filter-chips">
-                {NATIVE_CROSSHAIR_SIZES.map((size) => (
-                  <button
-                    key={size}
-                    className={`filter-chip${nativeCrosshair.size === size ? ' active' : ''}`}
-                    onClick={() => applyNativeCrosshairSettings({ size })}
-                  >
-                    {nativeCrosshairSizeLabel(t, size)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="settings-row">
-              <p className="settings-row-label">{t.settings.nativeCrosshairColorLabel}</p>
-              <div className="crosshair-color-row">
-                {NATIVE_CROSSHAIR_COLOR_PRESETS.map((c) => (
-                  <button
-                    key={c}
-                    className={`crosshair-color-swatch${nativeCrosshair.color === c ? ' selected' : ''}`}
-                    style={{ background: c }}
-                    aria-label={c}
-                    onClick={() => applyNativeCrosshairSettings({ color: c })}
-                  />
-                ))}
-                <input
-                  type="color"
-                  className="crosshair-color-custom"
-                  aria-label={t.settings.nativeCrosshairCustomColorAriaLabel}
-                  value={nativeCrosshair.color}
-                  onChange={(e) => applyNativeCrosshairSettings({ color: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="settings-row">
-              <div>
-                <p className="settings-row-label">{t.settings.nativeCrosshairTranslucentLabel}</p>
-                <p className="settings-row-desc">{t.settings.nativeCrosshairTranslucentDesc}</p>
-              </div>
-              <button
-                className={`toggle-switch${nativeCrosshair.translucent ? ' on' : ''}`}
-                role="switch"
-                aria-checked={nativeCrosshair.translucent}
-                aria-label={t.settings.nativeCrosshairTranslucentAriaLabel}
-                onClick={() => applyNativeCrosshairSettings({ translucent: !nativeCrosshair.translucent })}
-              >
-                <span className="toggle-switch-thumb" />
-              </button>
-            </div>
-
-            <div className="settings-row">
-              <div>
-                <p className="settings-row-label">{t.settings.nativeCrosshairDynamicLabel}</p>
-                <p className="settings-row-desc">{t.settings.nativeCrosshairDynamicDesc}</p>
-              </div>
-              <button
-                className={`toggle-switch${nativeCrosshair.dynamic ? ' on' : ''}`}
-                role="switch"
-                aria-checked={nativeCrosshair.dynamic}
-                aria-label={t.settings.nativeCrosshairDynamicAriaLabel}
-                onClick={() => applyNativeCrosshairSettings({ dynamic: !nativeCrosshair.dynamic })}
-              >
-                <span className="toggle-switch-thumb" />
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+      <NativeCrosshairEditor />
 
       <h2 className="section-header">{t.settings.sectionCrosshair}</h2>
       <div className="settings-card">

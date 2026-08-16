@@ -131,6 +131,7 @@ const KNOWN_COMMANDS = [
   '+strafe',
   '+duck',
   '+speed',
+  '+jump',
   '+forward',
   '+back',
   '+moveleft',
@@ -305,8 +306,15 @@ interface NumericRange {
   max: number
 }
 
-/** Sane ranges for cvars where an implausible value is worth a heads-up — not enforcement, just a nudge. Caps match documented client maximums (see CLAUDE.md's network-cvar gotcha). */
-const NUMERIC_RANGES: Record<string, NumericRange> = {
+/**
+ * Sane ranges for cvars where an implausible value is worth a heads-up — not
+ * enforcement, just a nudge. Caps match documented client maximums (see
+ * CLAUDE.md's network-cvar gotcha). Exported so cfg-builder-settings.ts (M14)
+ * can reuse the exact same range data for its own hard-clamp validation
+ * rather than maintaining a second, potentially-drifting copy of the same
+ * numbers — see that module's doc comment.
+ */
+export const NUMERIC_RANGES: Record<string, NumericRange> = {
   rate: { min: 0, max: 100000 },
   cl_updaterate: { min: 0, max: 102 },
   cl_cmdrate: { min: 0, max: 105 },

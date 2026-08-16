@@ -3,6 +3,7 @@ import {
   Home,
   Server,
   Boxes,
+  SlidersHorizontal,
   Settings as SettingsIcon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -13,7 +14,7 @@ import type { SteamDetectResult } from '../../electron/modules/steam-detect'
 import { SIDEBAR_COLLAPSED_KEY, loadJSON, saveJSON } from '../lib/storage'
 import { useT } from '../lib/i18n'
 
-export type Tab = 'home' | 'servers' | 'content' | 'settings'
+export type Tab = 'home' | 'servers' | 'content' | 'cfgbuilder' | 'settings'
 
 export default function Sidebar({
   tab,
@@ -31,6 +32,7 @@ export default function Sidebar({
     { id: 'home', label: t.nav.home, icon: Home },
     { id: 'servers', label: t.nav.servers, icon: Server },
     { id: 'content', label: t.nav.content, icon: Boxes },
+    { id: 'cfgbuilder', label: t.nav.cfgBuilder, icon: SlidersHorizontal },
     { id: 'settings', label: t.nav.settings, icon: SettingsIcon }
   ]
 

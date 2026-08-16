@@ -3,6 +3,7 @@ import type { FavoriteServer } from '../electron/modules/server-browser'
 import Home from './pages/Home'
 import Servers from './pages/Servers'
 import Content from './pages/Content'
+import CfgBuilder from './pages/CfgBuilder'
 import Settings from './pages/Settings'
 import TitleBar from './components/TitleBar'
 import Sidebar, { type Tab } from './components/Sidebar'
@@ -41,6 +42,7 @@ export default function App(): React.JSX.Element {
               <Servers focusServer={focusServer} onFocusServerHandled={() => setFocusServer(null)} />
             )}
             {tab === 'content' && <Content />}
+            {tab === 'cfgbuilder' && <CfgBuilder />}
             {tab === 'settings' && <Settings />}
           </main>
         </div>

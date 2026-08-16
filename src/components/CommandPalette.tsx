@@ -7,6 +7,7 @@ import {
   Server,
   Settings as SettingsIcon,
   ShieldCheck,
+  SlidersHorizontal,
   Wand2,
   type LucideIcon
 } from 'lucide-react'
@@ -96,6 +97,13 @@ export default function CommandPalette({
       { id: 'nav:home', label: t.commandPalette.goToHome, hint: t.commandPalette.hintScreen, icon: HomeIcon, run: () => onNavigate('home') },
       { id: 'nav:servers', label: t.commandPalette.goToServers, hint: t.commandPalette.hintScreen, icon: Server, run: () => onNavigate('servers') },
       { id: 'nav:content', label: t.commandPalette.goToContent, hint: t.commandPalette.hintScreen, icon: Boxes, run: () => onNavigate('content') },
+      {
+        id: 'nav:cfgbuilder',
+        label: t.commandPalette.goToCfgBuilder,
+        hint: t.commandPalette.hintScreen,
+        icon: SlidersHorizontal,
+        run: () => onNavigate('cfgbuilder')
+      },
       { id: 'nav:settings', label: t.commandPalette.goToSettings, hint: t.commandPalette.hintScreen, icon: SettingsIcon, run: () => onNavigate('settings') }
     ].filter((a) => a.id !== `nav:${tab}`)
 

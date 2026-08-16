@@ -71,6 +71,19 @@ import {
   updateNativeCrosshairSettings,
   type NativeCrosshairSettings
 } from './modules/native-crosshair'
+import {
+  initCfgBuilder,
+  getCfgBuilderStatus,
+  updateCfgBuilderSettings,
+  resetCfgBuilderToDefault,
+  previewCfgBuilderText,
+  scanCfgBuilder,
+  loadCfgBuilderPreset,
+  applyCfgBuilder,
+  removeCfgBuilderFromGame,
+  exportCfgBuilderFile,
+  type CfgBuilderSettings
+} from './modules/cfg-builder'
 import type { Locale } from '../locales/types'
 
 /**
@@ -264,6 +277,16 @@ function registerIpc(): void {
     updateNativeCrosshairSettings(partial)
   )
 
+  ipcMain.handle('cfg-builder:get-status', () => getCfgBuilderStatus())
+  ipcMain.handle('cfg-builder:update-settings', (_e, partial: Partial<CfgBuilderSettings>) => updateCfgBuilderSettings(partial))
+  ipcMain.handle('cfg-builder:reset-to-default', () => resetCfgBuilderToDefault())
+  ipcMain.handle('cfg-builder:preview-text', () => previewCfgBuilderText())
+  ipcMain.handle('cfg-builder:scan', () => scanCfgBuilder())
+  ipcMain.handle('cfg-builder:load-preset', (_e, files: ManifestFile[], label: string) => loadCfgBuilderPreset(files, label))
+  ipcMain.handle('cfg-builder:apply', () => applyCfgBuilder())
+  ipcMain.handle('cfg-builder:remove-from-game', () => removeCfgBuilderFromGame())
+  ipcMain.handle('cfg-builder:export-file', (event) => exportCfgBuilderFile(BrowserWindow.fromWebContents(event.sender)))
+
   ipcMain.handle('updater:check', () => checkForUpdates())
   ipcMain.handle('updater:download', () => downloadUpdate())
   ipcMain.handle('updater:install', () => installUpdate())
@@ -347,6 +370,7 @@ app.whenReady().then(async () => {
 
   await initCrosshairOverlay()
   await initNativeCrosshair()
+  await initCfgBuilder()
 
   registerIpc()
   createWindow()
