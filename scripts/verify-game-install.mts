@@ -26,7 +26,7 @@
  */
 
 import { app } from 'electron'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, chmod, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     setManualInstallPathIfValid,
     getActiveInstall
   } = await import('../electron/modules/game-install.ts')
-  const { buildLaunchArgs } = await import('../electron/modules/launch.ts')
+  const { buildLaunchArgs, resolveLaunchAction, spawnDirect } = await import('../electron/modules/launch.ts')
   const { detectSteam } = await import('../electron/modules/steam-detect.ts')
 
   console.log('== resolveEngineBinary / validateInstallPath ==')
@@ -188,6 +188,75 @@ async function main(): Promise<void> {
       JSON.stringify(buildLaunchArgs({ overlayEnabled: true, connectTo: { ip: '1.2.3.4', port: 27015 } })) ===
         JSON.stringify(['-condebug', '-window', '-noborder', '+connect', '1.2.3.4:27015'])
     )
+  }
+
+  console.log('== resolveLaunchAction (pure, launch.ts) — self-review fix ==')
+  {
+    // Bug found in self-review: playGame()/connectToServer() used to check
+    // only `source === 'manual'`, which is indistinguishable from "no
+    // override configured, fall through to Steam" once a broken override
+    // makes getActiveInstall() report source:null either way. That silently
+    // routed a broken manual install through steam://, which could launch a
+    // *different* Steam-installed copy without the player ever knowing —
+    // exactly the "silent directory swap" the whole precedence design
+    // exists to prevent. Fixed by having resolveLaunchAction distinguish
+    // "nothing configured" (manualPath: null) from "configured but broken"
+    // (manualPath set, installed: false) and throw for the latter instead
+    // of falling through.
+    const steamBase = { steamPath: '/steam', steamGamePath: '/steam/cs', steamInstalled: true }
+
+    const steamActive = { ...steamBase, installed: true, gamePath: '/steam/cs', source: 'steam' as const, manualPath: null, manualPathProblem: null }
+    check('Steam-active install routes to steam', resolveLaunchAction(steamActive).kind === 'steam')
+
+    const manualActive = { ...steamBase, installed: true, gamePath: '/my/cs16', source: 'manual' as const, manualPath: '/my/cs16', manualPathProblem: null }
+    const manualAction = resolveLaunchAction(manualActive)
+    check('valid manual override routes to spawn with its gamePath', manualAction.kind === 'spawn' && manualAction.gamePath === '/my/cs16')
+
+    const nothingConfigured = { ...steamBase, steamInstalled: false, installed: false, gamePath: null, source: null, manualPath: null, manualPathProblem: null }
+    check('nothing configured at all still falls through to steam (unchanged pre-M17 behavior)', resolveLaunchAction(nothingConfigured).kind === 'steam')
+
+    const brokenManual = {
+      ...steamBase,
+      installed: false,
+      gamePath: null,
+      source: null,
+      manualPath: '/my/cs16-moved',
+      manualPathProblem: 'missing-cstrike' as const
+    }
+    let threwForBrokenManual = false
+    try {
+      resolveLaunchAction(brokenManual)
+    } catch {
+      threwForBrokenManual = true
+    }
+    check('a configured-but-broken manual override throws instead of silently trying Steam', threwForBrokenManual)
+  }
+
+  console.log('== spawnDirect error handling — self-review fix ==')
+  {
+    // Bug found in self-review: child_process.spawn() never throws
+    // synchronously for a launch failure -- it emits an async 'error' event.
+    // With no listener attached, an EventEmitter's 'error' event crashes the
+    // whole Node/Electron process (documented core behavior, not a
+    // hypothetical). A file that exists and passes validateInstallPath
+    // (existsSync doesn't check the execute bit) but isn't actually
+    // executable reproduces the exact real-world race this fixes: the
+    // validation check passed, but the real exec fails. If the fix
+    // regresses, this whole verify script process crashes rather than this
+    // one check merely failing -- that in itself is part of the proof.
+    const dir = await freshInstallDir('gi-spawn-noexec-', { binary: 'none' })
+    await writeFile(join(dir, 'hl_linux'), '#!/bin/sh\necho hi\n')
+    await chmod(join(dir, 'hl_linux'), 0o644) // deliberately NOT executable
+
+    let rejected = false
+    try {
+      await spawnDirect(dir, ['-condebug'])
+    } catch {
+      rejected = true
+    }
+    check('spawning a non-executable "binary" rejects cleanly instead of crashing the process', rejected)
+
+    await rm(dir, { recursive: true, force: true })
   }
 
   await rm(userDataTmp, { recursive: true, force: true })

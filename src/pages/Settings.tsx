@@ -35,6 +35,9 @@ import NativeCrosshairEditor from '../components/NativeCrosshairEditor'
 const CROSSHAIR_SHAPES: CrosshairShape[] = ['dot', 'cross', 'circle', 'cross-dot']
 const CROSSHAIR_COLOR_PRESETS = ['#39ff14', '#00eaff', '#ff3b30', '#ffe135', '#ffffff', '#ff2fd6']
 
+/** Same interval CondebugNotice/LaunchOptionsNotice/CrosshairWindowedNotice already re-check on. */
+const INSTALL_RECHECK_INTERVAL_MS = 30_000
+
 function installProblemMessage(t: Messages, problem: 'not-found' | 'missing-cstrike' | 'missing-binary'): string {
   switch (problem) {
     case 'not-found':
@@ -422,8 +425,18 @@ export default function Settings(): React.JSX.Element {
     return unsubscribe
   }, [])
 
+  // Re-checks periodically (not just once on mount) rather than trusting a
+  // stale read: the manual override lives on disk the player picked, which
+  // can change out from under the app while this page is open (drive
+  // unmounted, folder renamed/moved) — same self-correcting pattern as
+  // CondebugNotice/LaunchOptionsNotice/CrosshairWindowedNotice.
   useEffect(() => {
-    window.launcher.getGameInstall().then(setInstallStatus).catch(() => setInstallStatus(null))
+    function refresh(): void {
+      window.launcher.getGameInstall().then(setInstallStatus).catch(() => setInstallStatus(null))
+    }
+    refresh()
+    const interval = setInterval(refresh, INSTALL_RECHECK_INTERVAL_MS)
+    return () => clearInterval(interval)
   }, [])
 
   async function handleBrowseInstall(): Promise<void> {

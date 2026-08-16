@@ -18,6 +18,9 @@ import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
 import CondebugNotice from '../components/CondebugNotice'
 import DesktopIntegrationNotice from '../components/DesktopIntegrationNotice'
 
+/** Same interval CondebugNotice/LaunchOptionsNotice/CrosshairWindowedNotice already re-check on. */
+const INSTALL_RECHECK_INTERVAL_MS = 30_000
+
 type PlayState = 'install-missing' | 'update' | 'syncing' | 'launching' | 'idle'
 
 interface LastServer {
@@ -73,12 +76,22 @@ export default function Home({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
   const { pushToast } = useToast()
 
+  // Re-checks periodically rather than trusting a stale read: a manual
+  // install's folder can disappear (drive unmounted, folder moved) while
+  // this page is sitting open, and PLAY's disabled state should reflect
+  // that without requiring the player to leave and come back — same
+  // self-correcting pattern as CondebugNotice/LaunchOptionsNotice.
   useEffect(() => {
-    window.launcher
-      .getGameInstall()
-      .then(setDetection)
-      .catch(() => setDetection('error'))
+    function refresh(): void {
+      window.launcher
+        .getGameInstall()
+        .then(setDetection)
+        .catch(() => setDetection('error'))
+    }
+    refresh()
+    const interval = setInterval(refresh, INSTALL_RECHECK_INTERVAL_MS)
     window.launcher.getAppVersion().then(setAppVersion)
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
