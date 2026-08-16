@@ -34,8 +34,8 @@
  * so a source failure can never empty the browser on its own.
  */
 
-import type { FavoriteServer } from './server-browser'
-import { parseHostPort } from './server-browser'
+import type { FavoriteServer } from './server-browser.ts'
+import { parseHostPort } from './server-browser.ts'
 
 export interface ServerSourceSpec {
   id: string
@@ -114,7 +114,19 @@ function parseAddressEntry(entry: unknown): FavoriteServer | null {
   return null
 }
 
-/** Tries JSON array first (strings or {ip,port} objects), falls back to plain-text ip:port lines. */
+/**
+ * Tries JSON array first (strings or {ip,port} objects), falls back to
+ * plain-text ip:port lines. In the text path, everything from the first `#`
+ * onward is stripped before parsing a line — this makes a whole-line comment
+ * (`# some note`) and a trailing inline note on an address line
+ * (`1.2.3.4:27015 # EU dust2 24/7`) the same case: both just leave an empty
+ * or address-only remainder. Before this, a trailing note silently dropped
+ * the whole line (the `#` isn't a valid port character, so parseHostPort
+ * returned null with no error surfaced) — a real footgun for a hand-curated
+ * list where annotating entries is the natural thing to do. No address ever
+ * legitimately contains `#`, so this is unambiguous and backward-compatible
+ * with every existing whole-line-comment-only subscription file.
+ */
 export function parseAddressList(text: string): FavoriteServer[] {
   const trimmed = text.trim()
   if (trimmed.startsWith('[')) {
@@ -129,8 +141,8 @@ export function parseAddressList(text: string): FavoriteServer[] {
   }
   return trimmed
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.split('#')[0].trim())
+    .filter((line) => line.length > 0)
     .map(parseHostPort)
     .filter((t): t is FavoriteServer => t !== null)
 }

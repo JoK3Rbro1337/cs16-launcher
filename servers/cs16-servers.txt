@@ -1,11 +1,14 @@
 # 1.6X Launcher — default curated CS 1.6 server list
 #
-# Format: one "ip:port" per line. Blank lines and lines starting with '#'
-# are ignored. This file is fetched as a subscription source (see
-# src/lib/serverSources.ts / electron/modules/server-sources.ts) and merged
-# into every server-list refresh alongside favorites, the local known-servers
-# pool, and any other sources a user has added. It ships as an enabled-by-
-# default subscription (user-removable in Settings like any other source).
+# Format: one "ip:port" per line (e.g. 203.0.113.10:27015). A trailing
+# "# note" is stripped and ignored, so entries can be annotated, e.g.:
+#   203.0.113.10:27015 # EU HQ 24/7 dust2
+# Blank lines and lines starting with '#' are ignored entirely. This file is
+# fetched as a subscription source (see src/lib/serverSources.ts /
+# electron/modules/server-sources.ts) and merged into every server-list
+# refresh alongside favorites, the local known-servers pool, and any other
+# sources a user has added. It ships as an enabled-by-default subscription
+# (user-removable in Settings like any other source).
 #
 # Why this file exists: as of 2026-07, both of the launcher's automated
 # discovery paths are down — Valve's GoldSrc master server infrastructure
@@ -20,4 +23,4 @@
 # no extra whitespace). Please only add servers you'd actually recommend —
 # this list ships enabled by default for every launcher install.
 
-# TODO(maintainer): seed with current favorites — see chat, still pending
+# Servers (one "ip:port" per line, below this line):

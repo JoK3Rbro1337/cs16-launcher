@@ -36,7 +36,7 @@ import {
   queryMasterServer,
   REGIONS
 } from 'steam-server-query-goldsrc-support'
-import { CS16_APPID } from './steam-detect'
+import { CS16_APPID } from './steam-detect.ts'
 
 export interface GameServer {
   ip: string
