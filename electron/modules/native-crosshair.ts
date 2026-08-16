@@ -43,7 +43,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { app } from 'electron'
-import { detectSteam } from './steam-detect.ts'
+import { getActiveInstall } from './game-install.ts'
 import { resolveContentPath, backupIfNeeded } from './content-sync.ts'
 import {
   DEFAULT_NATIVE_CROSSHAIR_SETTINGS,
@@ -155,9 +155,9 @@ export interface NativeCrosshairStatus {
 }
 
 async function tryApply(): Promise<boolean> {
-  const detection = await detectSteam()
-  if (!detection.installed || !detection.gamePath) return false
-  await applyNativeCrosshair(detection.gamePath, settings)
+  const install = await getActiveInstall()
+  if (!install.installed || !install.gamePath) return false
+  await applyNativeCrosshair(install.gamePath, settings)
   return true
 }
 

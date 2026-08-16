@@ -24,7 +24,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { detectSteam } from './steam-detect.ts'
+import { getActiveInstall } from './game-install.ts'
 import {
   firstToken,
   splitTopLevelStatements,
@@ -166,10 +166,10 @@ async function saveLocalVariant(snapshot: LocalVariantSnapshot): Promise<void> {
 }
 
 async function readGameConfigCfg(): Promise<string | null> {
-  const detection = await detectSteam()
-  if (!detection.installed || !detection.gamePath) return null
+  const install = await getActiveInstall()
+  if (!install.installed || !install.gamePath) return null
   try {
-    return await readFile(join(detection.gamePath, CONFIG_CFG_RELPATH), 'utf-8')
+    return await readFile(join(install.gamePath, CONFIG_CFG_RELPATH), 'utf-8')
   } catch {
     return null
   }

@@ -25,9 +25,10 @@ export const ru: Messages = {
     settings: 'Настройки',
     collapseSidebar: 'Свернуть боковую панель',
     expandSidebar: 'Развернуть боковую панель',
-    steamChecking: 'Проверка Steam…',
-    steamDetected: 'Steam найден',
-    steamNotFound: 'Steam не найден',
+    installChecking: 'Проверка установки…',
+    installDetectedSteam: 'Steam найден',
+    installDetectedManual: 'Ручная установка',
+    installNotFound: 'Установка не найдена',
     fix: 'Исправить'
   },
 
@@ -71,6 +72,7 @@ export const ru: Messages = {
     play: 'ИГРАТЬ',
     installCs: 'Установить CS 1.6…',
     locateSteam: 'Найти Steam…',
+    browseForInstall: 'Или укажите папку установки CS 1.6…',
     lastServer: 'Последний сервер',
     noRecentConnections: 'Нет недавних подключений — перейдите к Серверам, чтобы подключиться.',
     sourceLauncher: 'Лаунчер',
@@ -155,6 +157,9 @@ export const ru: Messages = {
     systemHeading: 'Система',
     detectingSteam: 'Поиск Steam…',
     steamDetectionFailed: 'Не удалось определить Steam.',
+    installSource: 'Источник установки',
+    installSourceSteam: 'Steam',
+    installSourceManual: 'Вручную',
     steamPath: 'Путь к Steam',
     gamePath: 'Путь к игре',
     installed: 'Установлено',
@@ -189,6 +194,27 @@ export const ru: Messages = {
     verifyModalMessage:
       'Проверяет каждый файл активной сборки контента по манифесту и заново загружает всё, что не совпадает. На медленном соединении это может занять некоторое время.',
 
+    sectionInstall: 'Установка игры',
+    installIntro: 'По умолчанию — автоопределение Steam. Укажите папку вручную, если CS 1.6 установлена другим способом — ручной выбор всегда имеет приоритет над автоопределением Steam, пока он корректен.',
+    activeInstallLabel: 'Активная установка',
+    installNotFoundLabel: 'Не найдено',
+    activeInstallSourceSteam: 'Steam',
+    activeInstallSourceManual: 'Вручную',
+    steamAutoDetectLabel: 'Автоопределение Steam',
+    steamAutoDetectDesc: 'Автоматически находит CS 1.6 в вашей библиотеке Steam. Не требует настройки, если вы играете именно так.',
+    steamFoundNotInstalledStatus: 'Steam найден — CS 1.6 через него не установлена',
+    steamNotFoundStatus: 'Steam не найден',
+    manualInstallLabel: 'Ручное переопределение',
+    manualInstallDesc: 'Укажите любую имеющуюся папку установки CS 1.6 — лаунчер никогда не загружает и не поставляет файлы игры, только использует то, что у вас уже есть.',
+    manualInstallNone: 'Не задано — используется автоопределение Steam',
+    browseButton: 'Обзор…',
+    browsing: 'Открытие диалога…',
+    clearButton: 'Очистить',
+    clearing: 'Очистка…',
+    installSavedToast: 'Папка установки сохранена',
+    installProblemNotFound: 'Такой папки не существует',
+    installProblemMissingCstrike: 'Там нет папки cstrike/ — это не похоже на установку CS 1.6',
+    installProblemMissingBinary: 'Там не найден исполняемый файл движка CS 1.6 (hl_linux/hl.sh или hl.exe)',
     sectionFolders: 'Папки',
     gameFolderLabel: 'Папка игры',
     gameFolderDesc: 'Открыть каталог установки CS 1.6 в файловом менеджере.',
@@ -527,7 +553,8 @@ export const ru: Messages = {
   dialogs: {
     exportProfileTitle: 'Экспорт профиля',
     importProfileTitle: 'Импорт профиля',
-    exportCfgBuilderTitle: 'Сохранить сгенерированный конфиг'
+    exportCfgBuilderTitle: 'Сохранить сгенерированный конфиг',
+    browseInstallTitle: 'Выберите папку установки CS 1.6'
   },
 
   cfgBuilder: {

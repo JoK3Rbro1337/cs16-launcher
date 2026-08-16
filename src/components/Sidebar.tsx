@@ -10,7 +10,7 @@ import {
   CircleCheck,
   TriangleAlert
 } from 'lucide-react'
-import type { SteamDetectResult } from '../../electron/modules/steam-detect'
+import type { GameInstall } from '../../electron/modules/game-install'
 import { SIDEBAR_COLLAPSED_KEY, loadJSON, saveJSON } from '../lib/storage'
 import { useT } from '../lib/i18n'
 
@@ -25,7 +25,7 @@ export default function Sidebar({
 }): React.JSX.Element {
   const t = useT()
   const [collapsed, setCollapsed] = useState(() => loadJSON(SIDEBAR_COLLAPSED_KEY, false))
-  const [steam, setSteam] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
+  const [install, setInstall] = useState<GameInstall | 'loading' | 'error'>('loading')
   const [version, setVersion] = useState<string | null>(null)
 
   const NAV_ITEMS: { id: Tab; label: string; icon: typeof Home }[] = [
@@ -38,9 +38,9 @@ export default function Sidebar({
 
   useEffect(() => {
     window.launcher
-      .detectSteam()
-      .then(setSteam)
-      .catch(() => setSteam('error'))
+      .getGameInstall()
+      .then(setInstall)
+      .catch(() => setInstall('error'))
     window.launcher.getAppVersion().then(setVersion)
   }, [])
 
@@ -52,9 +52,15 @@ export default function Sidebar({
     })
   }
 
-  const steamOk = steam !== 'loading' && steam !== 'error' && steam.installed
-  const steamKnown = steam !== 'loading' && steam !== 'error'
-  const steamLabel = steam === 'loading' ? t.nav.steamChecking : steamOk ? t.nav.steamDetected : t.nav.steamNotFound
+  const installKnown = install !== 'loading' && install !== 'error'
+  const installOk = installKnown && install.installed
+  const installLabel = install === 'loading'
+    ? t.nav.installChecking
+    : installOk && installKnown
+      ? install.source === 'steam'
+        ? t.nav.installDetectedSteam
+        : t.nav.installDetectedManual
+      : t.nav.installNotFound
 
   return (
     <nav className={`sidebar${collapsed ? ' collapsed' : ''}`}>
@@ -82,19 +88,19 @@ export default function Sidebar({
 
       <div className="sidebar-bottom">
         <div
-          className={`steam-chip${steamKnown ? (steamOk ? ' ok' : ' warn') : ''}`}
-          title={steamLabel}
+          className={`steam-chip${installKnown ? (installOk ? ' ok' : ' warn') : ''}`}
+          title={installLabel}
         >
-          {steamOk ? (
+          {installOk ? (
             <CircleCheck size={14} />
-          ) : steamKnown ? (
+          ) : installKnown ? (
             <TriangleAlert size={14} />
           ) : (
             <span className="steam-chip-dot" />
           )}
-          {!collapsed && <span className="steam-chip-label">{steamLabel}</span>}
-          {!collapsed && steamKnown && !steamOk && (
-            <button className="steam-chip-fix" onClick={() => onSelect('home')}>
+          {!collapsed && <span className="steam-chip-label">{installLabel}</span>}
+          {!collapsed && installKnown && !installOk && (
+            <button className="steam-chip-fix" onClick={() => onSelect('settings')}>
               {t.nav.fix}
             </button>
           )}

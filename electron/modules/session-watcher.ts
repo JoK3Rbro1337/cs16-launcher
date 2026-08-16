@@ -74,6 +74,7 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import { parse } from 'vdf-parser'
 import { detectSteam } from './steam-detect'
+import { getActiveInstall } from './game-install.ts'
 import { isGameRunning } from './game-process'
 import { queryServer, queryPlayers } from './server-browser'
 import { recordKnownServer } from './known-servers'
@@ -336,8 +337,8 @@ function scheduleTail(logPath: string): void {
 
 export async function startWatching(): Promise<void> {
   if (watching) return
-  const detection = await detectSteam()
-  if (!detection.gamePath) return
+  const install = await getActiveInstall()
+  if (!install.gamePath) return
 
   watching = true
   currentMap = ''
@@ -345,13 +346,13 @@ export async function startWatching(): Promise<void> {
   // (fresh engine launch) is handled by tailTick's own length check, so this is safe either way:
   // if the game is about to (re)start, the file will shrink past this and we naturally rescan from 0.
   try {
-    const existing = await readFile(join(detection.gamePath, QCONSOLE_LOG_FILENAME), 'utf-8')
+    const existing = await readFile(join(install.gamePath, QCONSOLE_LOG_FILENAME), 'utf-8')
     processedUpTo = existing.length
   } catch {
     processedUpTo = 0
   }
 
-  scheduleTail(join(detection.gamePath, QCONSOLE_LOG_FILENAME))
+  scheduleTail(join(install.gamePath, QCONSOLE_LOG_FILENAME))
 }
 
 export function stopWatching(): void {

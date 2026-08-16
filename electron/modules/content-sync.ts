@@ -112,7 +112,7 @@ import { createReadStream, createWriteStream, type Dirent } from 'node:fs'
 import { access, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { once } from 'node:events'
-import { detectSteam } from './steam-detect.ts'
+import { getActiveInstall } from './game-install.ts'
 import { scanConfigFiles, extractExecTargets, type ConfigScanResult } from './config-scanner.ts'
 
 export interface ManifestFile {
@@ -582,11 +582,11 @@ export interface BackedUpFile {
 
 /** The install root, resolved the same way syncContent finds it — for the standalone backup-browsing/restore UI. */
 async function requireContentDir(): Promise<string> {
-  const detection = await detectSteam()
-  if (!detection.installed || !detection.gamePath) {
-    throw new Error('CS 1.6 install not found — run Steam detection first')
+  const install = await getActiveInstall()
+  if (!install.installed || !install.gamePath) {
+    throw new Error('CS 1.6 install not found — set one up in Settings')
   }
-  return detection.gamePath
+  return install.gamePath
 }
 
 /** Lists every file currently sitting in `.16x-launcher-backups/`, for the "Restore original files" UI. */
@@ -701,11 +701,11 @@ export async function syncContent(
   profile: BuildProfile,
   onProgress: (progress: SyncProgress) => void
 ): Promise<SyncResult> {
-  const detection = await detectSteam()
-  if (!detection.installed || !detection.gamePath) {
-    throw new Error('CS 1.6 install not found — run Steam detection first')
+  const install = await getActiveInstall()
+  if (!install.installed || !install.gamePath) {
+    throw new Error('CS 1.6 install not found — set one up in Settings')
   }
-  const contentDir = detection.gamePath
+  const contentDir = install.gamePath
 
   const manifest = await fetchManifest(manifestUrl)
 

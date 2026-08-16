@@ -1,9 +1,10 @@
 import { Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { SteamDetectResult } from '../../electron/modules/steam-detect'
+import type { GameInstall } from '../../electron/modules/game-install'
 import type { BuildProfile, SyncProgress } from '../../electron/modules/content-sync'
 import type { GameServer } from '../../electron/modules/server-browser'
 import type { LiveSession, SessionSource } from '../../electron/modules/session-watcher'
+import type { Tab } from '../components/Sidebar'
 import {
   BUILD_PROFILE_KEY,
   LAST_SERVER_KEY,
@@ -17,7 +18,7 @@ import LaunchOptionsNotice from '../components/LaunchOptionsNotice'
 import CondebugNotice from '../components/CondebugNotice'
 import DesktopIntegrationNotice from '../components/DesktopIntegrationNotice'
 
-type PlayState = 'steam-missing' | 'update' | 'syncing' | 'launching' | 'idle'
+type PlayState = 'install-missing' | 'update' | 'syncing' | 'launching' | 'idle'
 
 interface LastServer {
   ip: string
@@ -50,9 +51,9 @@ function pingTone(ping: number | null): string {
   return ' ping-danger'
 }
 
-export default function Home(): React.JSX.Element {
+export default function Home({ onNavigate }: { onNavigate: (tab: Tab) => void }): React.JSX.Element {
   const t = useT()
-  const [detection, setDetection] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
+  const [detection, setDetection] = useState<GameInstall | 'loading' | 'error'>('loading')
   const [appVersion, setAppVersion] = useState<string | null>(null)
 
   const [manifestUrl] = useState(() => localStorage.getItem(MANIFEST_URL_KEY) ?? '')
@@ -74,7 +75,7 @@ export default function Home(): React.JSX.Element {
 
   useEffect(() => {
     window.launcher
-      .detectSteam()
+      .getGameInstall()
       .then(setDetection)
       .catch(() => setDetection('error'))
     window.launcher.getAppVersion().then(setAppVersion)
@@ -142,7 +143,7 @@ export default function Home(): React.JSX.Element {
   const dirty = manifestUrl !== '' && JSON.stringify(profile) !== syncedProfileJSON
 
   const playState: PlayState = !installed
-    ? 'steam-missing'
+    ? 'install-missing'
     : launching
       ? 'launching'
       : syncing
@@ -238,10 +239,10 @@ export default function Home(): React.JSX.Element {
         <div className="hero-play-row">
           <button
             className={`play-button play-button-${playState}`}
-            disabled={playState === 'steam-missing' || playState === 'syncing' || playState === 'launching'}
+            disabled={playState === 'install-missing' || playState === 'syncing' || playState === 'launching'}
             onClick={handlePlay}
             title={
-              playState === 'steam-missing'
+              playState === 'install-missing'
                 ? steamFound
                   ? t.home.steamMissingTooltipInstall
                   : t.home.steamMissingTooltipLocate
@@ -263,10 +264,15 @@ export default function Home(): React.JSX.Element {
             )}
           </button>
 
-          {playState === 'steam-missing' && (
-            <button className="hero-fix-link" onClick={handleFixSteam}>
-              {steamFound ? t.home.installCs : t.home.locateSteam}
-            </button>
+          {playState === 'install-missing' && (
+            <div className="hero-fix-links">
+              <button className="hero-fix-link" onClick={handleFixSteam}>
+                {steamFound ? t.home.installCs : t.home.locateSteam}
+              </button>
+              <button className="hero-fix-link" onClick={() => onNavigate('settings')}>
+                {t.home.browseForInstall}
+              </button>
+            </div>
           )}
         </div>
       </div>

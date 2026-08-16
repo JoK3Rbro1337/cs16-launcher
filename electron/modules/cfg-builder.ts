@@ -30,7 +30,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { app, dialog, type BrowserWindow } from 'electron'
-import { detectSteam } from './steam-detect.ts'
+import { getActiveInstall } from './game-install.ts'
 import { resolveContentPath, backupIfNeeded, type ManifestFile } from './content-sync.ts'
 import { scanConfigFile, computeSafeScore, type ConfigScanResult, type ScanCounts } from './config-scanner.ts'
 import { getLocaleSync } from './locale-store.ts'
@@ -277,11 +277,11 @@ export async function removeCfgBuilderFromPath(gamePath: string): Promise<void> 
 }
 
 async function requireGamePath(): Promise<string> {
-  const detection = await detectSteam()
-  if (!detection.installed || !detection.gamePath) {
-    throw new Error('CS 1.6 install not found — run Steam detection first')
+  const install = await getActiveInstall()
+  if (!install.installed || !install.gamePath) {
+    throw new Error('CS 1.6 install not found — set one up in Settings')
   }
-  return detection.gamePath
+  return install.gamePath
 }
 
 /** Applies the current persisted settings to the real, detected game install. */

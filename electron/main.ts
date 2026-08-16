@@ -3,6 +3,12 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { detectSteam } from './modules/steam-detect'
 import { checkLaunchOptions } from './modules/steam-launch-options'
+import {
+  initGameInstall,
+  getActiveInstall,
+  setManualInstallPathIfValid,
+  browseForInstallPath
+} from './modules/game-install'
 import { BACKUP_DIRNAME, listBackups, restoreBackup, restoreAllBackups } from './modules/content-sync'
 import { playGame, connectToServer, openSteamFix } from './modules/launch'
 import {
@@ -181,6 +187,12 @@ function createWindow(): void {
 function registerIpc(): void {
   ipcMain.handle('steam:detect', () => detectSteam())
   ipcMain.handle('steam:check-launch-options', () => checkLaunchOptions())
+  ipcMain.handle('install:get-active', () => getActiveInstall())
+  ipcMain.handle('install:browse', (event) => browseForInstallPath(BrowserWindow.fromWebContents(event.sender)))
+  ipcMain.handle('install:clear-manual-path', async () => {
+    await setManualInstallPathIfValid(null)
+    return getActiveInstall()
+  })
   ipcMain.handle('launch:play', () => {
     startSessionWatching()
     return playGame()
@@ -293,14 +305,14 @@ function registerIpc(): void {
   ipcMain.handle('app:version', () => app.getVersion())
 
   ipcMain.handle('shell:open-game-folder', async () => {
-    const detection = await detectSteam()
-    if (!detection.gamePath) throw new Error('CS 1.6 install not found')
-    await shell.openPath(detection.gamePath)
+    const install = await getActiveInstall()
+    if (!install.gamePath) throw new Error('CS 1.6 install not found')
+    await shell.openPath(install.gamePath)
   })
   ipcMain.handle('shell:open-backup-folder', async () => {
-    const detection = await detectSteam()
-    if (!detection.gamePath) throw new Error('CS 1.6 install not found')
-    await shell.openPath(join(detection.gamePath, BACKUP_DIRNAME))
+    const install = await getActiveInstall()
+    if (!install.gamePath) throw new Error('CS 1.6 install not found')
+    await shell.openPath(join(install.gamePath, BACKUP_DIRNAME))
   })
 
   ipcMain.handle('window:minimize', (event) => {
@@ -368,6 +380,7 @@ app.whenReady().then(async () => {
     }
   })
 
+  await initGameInstall()
   await initCrosshairOverlay()
   await initNativeCrosshair()
   await initCfgBuilder()

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { SteamDetectResult } from '../../electron/modules/steam-detect'
+import type { GameInstall } from '../../electron/modules/game-install'
 import type { BuildProfile, ContentManifest } from '../../electron/modules/content-sync'
 import type { LocalVariantSnapshot, UpdatePreview } from '../../electron/modules/local-config-variant'
 import type { ConfigScanResult } from '../../electron/modules/config-scanner'
@@ -173,7 +173,7 @@ function CollapsibleSection({
 export default function Content(): React.JSX.Element {
   const t = useT()
   const { pushToast } = useToast()
-  const [detection, setDetection] = useState<SteamDetectResult | 'loading' | 'error'>('loading')
+  const [detection, setDetection] = useState<GameInstall | 'loading' | 'error'>('loading')
   const [profile, setProfile] = useState<BuildProfile>(() => loadJSON(BUILD_PROFILE_KEY, emptyProfile()))
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
     loadJSON(SECTION_COLLAPSE_KEY, defaultCollapsed(PLACEHOLDER_CATEGORIES))
@@ -204,7 +204,7 @@ export default function Content(): React.JSX.Element {
 
   useEffect(() => {
     window.launcher
-      .detectSteam()
+      .getGameInstall()
       .then(setDetection)
       .catch(() => setDetection('error'))
   }, [])
@@ -475,12 +475,20 @@ export default function Content(): React.JSX.Element {
         {detection === 'error' && <p className="muted">{t.content.steamDetectionFailed}</p>}
         {detection !== 'loading' && detection !== 'error' && (
           <dl className="detect-result">
-            <dt>{t.content.steamPath}</dt>
-            <dd>{detection.steamPath ?? t.content.notFound}</dd>
+            <dt>{t.content.installSource}</dt>
+            <dd>
+              {detection.source === 'steam'
+                ? t.content.installSourceSteam
+                : detection.source === 'manual'
+                  ? t.content.installSourceManual
+                  : t.content.notFound}
+            </dd>
             <dt>{t.content.gamePath}</dt>
             <dd>{detection.gamePath ?? t.content.notFound}</dd>
             <dt>{t.content.installed}</dt>
             <dd>{detection.installed ? t.content.yes : t.content.no}</dd>
+            <dt>{t.content.steamPath}</dt>
+            <dd>{detection.steamPath ?? t.content.notFound}</dd>
           </dl>
         )}
       </CollapsibleSection>

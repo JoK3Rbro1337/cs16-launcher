@@ -664,6 +664,12 @@ body {
   gap: 16px;
 }
 
+.hero-fix-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .hero-fix-link {
   border: none;
   background: none;
@@ -671,6 +677,7 @@ body {
   font-size: 12px;
   cursor: pointer;
   text-decoration: underline;
+  text-align: left;
 }
 
 .play-button {
@@ -777,7 +784,7 @@ body {
   animation: none;
 }
 
-.play-button-steam-missing {
+.play-button-install-missing {
   background: var(--cs-bg-3);
   color: var(--cs-text-low);
   box-shadow: none;
@@ -3081,4 +3088,39 @@ body {
   width: 84px;
   flex-shrink: 0;
   text-align: center;
+}
+
+/* Install source (game-install.ts) */
+
+.install-source-badge {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.install-source-badge-steam {
+  background: var(--cs-info);
+  color: #0d100e;
+}
+
+.install-source-badge-manual {
+  background: var(--cs-accent-dim);
+  color: var(--cs-accent);
+}
+
+.install-problem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cs-warn);
+}
+
+.install-manual-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
 }

@@ -37,9 +37,10 @@ export const en = {
     settings: 'Settings',
     collapseSidebar: 'Collapse sidebar',
     expandSidebar: 'Expand sidebar',
-    steamChecking: 'Checking Steam…',
-    steamDetected: 'Steam detected',
-    steamNotFound: 'Steam not found',
+    installChecking: 'Checking install…',
+    installDetectedSteam: 'Steam detected',
+    installDetectedManual: 'Manual install',
+    installNotFound: 'Install not found',
     fix: 'Fix'
   },
 
@@ -83,6 +84,7 @@ export const en = {
     play: 'PLAY',
     installCs: 'Install CS 1.6…',
     locateSteam: 'Locate Steam…',
+    browseForInstall: 'Or point at your CS 1.6 install folder…',
     lastServer: 'Last server',
     noRecentConnections: 'No recent connections — visit Servers to connect.',
     sourceLauncher: 'Launcher',
@@ -162,6 +164,9 @@ export const en = {
     systemHeading: 'System',
     detectingSteam: 'Detecting Steam…',
     steamDetectionFailed: 'Steam detection failed.',
+    installSource: 'Install source',
+    installSourceSteam: 'Steam',
+    installSourceManual: 'Manual',
     steamPath: 'Steam path',
     gamePath: 'Game path',
     installed: 'Installed',
@@ -195,6 +200,27 @@ export const en = {
     verifyModalMessage:
       "Re-checks every file in the active content build against the manifest and re-downloads anything that doesn't match. This can take a while on a slow connection.",
 
+    sectionInstall: 'Game Install',
+    installIntro: 'Steam auto-detect is the default. Point at a folder yourself if you have CS 1.6 installed some other way — a manual pick always takes priority over Steam auto-detect while it validates.',
+    activeInstallLabel: 'Active Install',
+    installNotFoundLabel: 'Not found',
+    activeInstallSourceSteam: 'Steam',
+    activeInstallSourceManual: 'Manual',
+    steamAutoDetectLabel: 'Steam Auto-Detect',
+    steamAutoDetectDesc: 'Automatically finds CS 1.6 through your Steam library. No setup needed if this is how you play.',
+    steamFoundNotInstalledStatus: 'Steam found — CS 1.6 not installed through it',
+    steamNotFoundStatus: 'Steam not found',
+    manualInstallLabel: 'Manual Override',
+    manualInstallDesc: 'Point at any existing CS 1.6 install folder — never downloads or bundles game files, only uses what you already have.',
+    manualInstallNone: 'None set — using Steam auto-detect',
+    browseButton: 'Browse…',
+    browsing: 'Browsing…',
+    clearButton: 'Clear',
+    clearing: 'Clearing…',
+    installSavedToast: 'Install folder set',
+    installProblemNotFound: "That folder doesn't exist",
+    installProblemMissingCstrike: "No cstrike/ folder found there — this doesn't look like a CS 1.6 install",
+    installProblemMissingBinary: 'No CS 1.6 engine executable found there (hl_linux/hl.sh or hl.exe)',
     sectionFolders: 'Folders',
     gameFolderLabel: 'Game folder',
     gameFolderDesc: 'Open the CS 1.6 install directory in your file manager.',
@@ -529,7 +555,8 @@ export const en = {
   dialogs: {
     exportProfileTitle: 'Export Profile',
     importProfileTitle: 'Import Profile',
-    exportCfgBuilderTitle: 'Save Generated Config'
+    exportCfgBuilderTitle: 'Save Generated Config',
+    browseInstallTitle: 'Select your CS 1.6 install folder'
   },
 
   cfgBuilder: {

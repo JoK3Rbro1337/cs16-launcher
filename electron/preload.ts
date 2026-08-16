@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SteamDetectResult } from './modules/steam-detect'
 import type { LaunchOptionsCheck } from './modules/steam-launch-options'
+import type { GameInstall, BrowseInstallResult } from './modules/game-install'
 import type { FavoriteServer, GameServer, QueryServersResult, ServerPlayer } from './modules/server-browser'
 import type { ServerSourceResult, ServerSourceSpec } from './modules/server-sources'
 import type { KnownServerEntry } from './modules/known-servers'
@@ -24,6 +25,9 @@ import type { Locale } from '../locales/types'
 const launcher = {
   detectSteam: (): Promise<SteamDetectResult> => ipcRenderer.invoke('steam:detect'),
   checkLaunchOptions: (): Promise<LaunchOptionsCheck> => ipcRenderer.invoke('steam:check-launch-options'),
+  getGameInstall: (): Promise<GameInstall> => ipcRenderer.invoke('install:get-active'),
+  browseForInstallPath: (): Promise<BrowseInstallResult> => ipcRenderer.invoke('install:browse'),
+  clearManualInstallPath: (): Promise<GameInstall> => ipcRenderer.invoke('install:clear-manual-path'),
   play: (): Promise<void> => ipcRenderer.invoke('launch:play'),
   connect: (ip: string, port: number): Promise<void> =>
     ipcRenderer.invoke('launch:connect', ip, port),

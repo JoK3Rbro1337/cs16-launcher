@@ -12,6 +12,7 @@ import type { NotificationRule, NotificationSettings, PollStatus } from '../../e
 import type { KnownPlayer } from '../../electron/modules/player-tracking'
 import type { ConfigScanResult } from '../../electron/modules/config-scanner'
 import type { CrosshairPlatformInfo, CrosshairSettings, CrosshairShape, KwinRuleInstructions } from '../../electron/modules/crosshair-overlay'
+import type { GameInstall, InstallValidation } from '../../electron/modules/game-install'
 import { BUILD_PROFILE_KEY, MANIFEST_URL_KEY, getReduceMotion, loadJSON, setReduceMotion } from '../lib/storage'
 import { useToast } from '../lib/toast'
 import { registerVerifyHandler } from '../lib/verifyRequest'
@@ -33,6 +34,23 @@ import NativeCrosshairEditor from '../components/NativeCrosshairEditor'
  */
 const CROSSHAIR_SHAPES: CrosshairShape[] = ['dot', 'cross', 'circle', 'cross-dot']
 const CROSSHAIR_COLOR_PRESETS = ['#39ff14', '#00eaff', '#ff3b30', '#ffe135', '#ffffff', '#ff2fd6']
+
+function installProblemMessage(t: Messages, problem: 'not-found' | 'missing-cstrike' | 'missing-binary'): string {
+  switch (problem) {
+    case 'not-found':
+      return t.settings.installProblemNotFound
+    case 'missing-cstrike':
+      return t.settings.installProblemMissingCstrike
+    case 'missing-binary':
+      return t.settings.installProblemMissingBinary
+  }
+}
+
+function validationProblem(v: InstallValidation): 'not-found' | 'missing-cstrike' | 'missing-binary' {
+  if (!v.exists) return 'not-found'
+  if (!v.hasCstrike) return 'missing-cstrike'
+  return 'missing-binary'
+}
 
 function crosshairShapeLabel(t: Messages, shape: CrosshairShape): string {
   switch (shape) {
@@ -171,6 +189,11 @@ export default function Settings(): React.JSX.Element {
 
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+
+  const [installStatus, setInstallStatus] = useState<GameInstall | null>(null)
+  const [browsingInstall, setBrowsingInstall] = useState(false)
+  const [clearingInstall, setClearingInstall] = useState(false)
+  const [browseError, setBrowseError] = useState<{ path: string; validation: InstallValidation } | null>(null)
 
   const [subscriptions, setSubscriptions] = useState<ServerSubscription[]>(loadSubscriptions)
   const [subUrl, setSubUrl] = useState('')
@@ -398,6 +421,41 @@ export default function Settings(): React.JSX.Element {
     window.launcher.checkForUpdates()
     return unsubscribe
   }, [])
+
+  useEffect(() => {
+    window.launcher.getGameInstall().then(setInstallStatus).catch(() => setInstallStatus(null))
+  }, [])
+
+  async function handleBrowseInstall(): Promise<void> {
+    setBrowsingInstall(true)
+    setBrowseError(null)
+    try {
+      const result = await window.launcher.browseForInstallPath()
+      if (result.canceled) return
+      if (result.saved) {
+        setInstallStatus(await window.launcher.getGameInstall())
+        pushToast(t.settings.installSavedToast, 'ok')
+      } else if (result.path && result.validation) {
+        setBrowseError({ path: result.path, validation: result.validation })
+      }
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBrowsingInstall(false)
+    }
+  }
+
+  async function handleClearManualInstall(): Promise<void> {
+    setClearingInstall(true)
+    try {
+      setInstallStatus(await window.launcher.clearManualInstallPath())
+      setBrowseError(null)
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setClearingInstall(false)
+    }
+  }
 
   function handleManifestUrlChange(value: string): void {
     setManifestUrl(value)
@@ -800,6 +858,69 @@ export default function Settings(): React.JSX.Element {
           }}
         />
       )}
+
+      <h2 className="section-header">{t.settings.sectionInstall}</h2>
+      <div className="settings-card">
+        <p className="settings-row-desc settings-section-intro">{t.settings.installIntro}</p>
+
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">{t.settings.activeInstallLabel}</p>
+            <p className="settings-row-desc">
+              {installStatus?.installed && installStatus.gamePath
+                ? installStatus.gamePath
+                : t.settings.installNotFoundLabel}
+            </p>
+          </div>
+          {installStatus?.installed && (
+            <span className={`install-source-badge install-source-badge-${installStatus.source}`}>
+              {installStatus.source === 'steam' ? t.settings.activeInstallSourceSteam : t.settings.activeInstallSourceManual}
+            </span>
+          )}
+        </div>
+
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">{t.settings.steamAutoDetectLabel}</p>
+            <p className="settings-row-desc">{t.settings.steamAutoDetectDesc}</p>
+            <p className="settings-row-desc muted">
+              {installStatus?.steamInstalled && installStatus.steamGamePath
+                ? installStatus.steamGamePath
+                : installStatus?.steamPath
+                  ? t.settings.steamFoundNotInstalledStatus
+                  : t.settings.steamNotFoundStatus}
+            </p>
+          </div>
+        </div>
+
+        <div className="settings-row">
+          <div>
+            <p className="settings-row-label">{t.settings.manualInstallLabel}</p>
+            <p className="settings-row-desc">{t.settings.manualInstallDesc}</p>
+            <p className="settings-row-desc muted">{installStatus?.manualPath ?? t.settings.manualInstallNone}</p>
+            {installStatus?.manualPathProblem && (
+              <p className="settings-row-desc install-problem">
+                <TriangleAlert size={12} /> {installProblemMessage(t, installStatus.manualPathProblem)}
+              </p>
+            )}
+            {browseError && (
+              <p className="settings-row-desc install-problem">
+                <TriangleAlert size={12} /> {browseError.path}: {installProblemMessage(t, validationProblem(browseError.validation))}
+              </p>
+            )}
+          </div>
+          <div className="install-manual-actions">
+            <button className="cp-btn-secondary" disabled={browsingInstall} onClick={handleBrowseInstall}>
+              <FolderOpen size={14} /> {browsingInstall ? t.settings.browsing : t.settings.browseButton}
+            </button>
+            {installStatus?.manualPath && (
+              <button className="cp-btn-secondary" disabled={clearingInstall} onClick={handleClearManualInstall}>
+                {clearingInstall ? t.settings.clearing : t.settings.clearButton}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       <h2 className="section-header">{t.settings.sectionFolders}</h2>
       <div className="settings-card">

@@ -37,7 +37,7 @@ export default function App(): React.JSX.Element {
         <div className="app-body">
           <Sidebar tab={tab} onSelect={setTab} />
           <main className="content">
-            {tab === 'home' && <Home />}
+            {tab === 'home' && <Home onNavigate={setTab} />}
             {tab === 'servers' && (
               <Servers focusServer={focusServer} onFocusServerHandled={() => setFocusServer(null)} />
             )}
